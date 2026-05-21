@@ -204,7 +204,7 @@
         <button id="inventoryBtn">📦 ИНВЕНТАРЬ</button>
         <button id="craftBtn">⚙️ КРАФТ</button>
         <button id="achievementsBtn">🏆 ДОСТИЖЕНИЯ</button>
-        <button id="dailyBtn">📅 ЗАДАНИЯ</button>
+        <button id="dailyQuestsBtn">📅 ЗАДАНИЯ</button>
         <button id="promoBtn" class="promo-btn">🎁 ПРОМОКОД</button>
         <button id="themeBtn" class="theme-btn">🌓 ТЕМА</button>
     </div>
@@ -569,7 +569,8 @@
     }
     
     function dailyBossFight() {
-        if (!player.class) { addSys("Выберите класс!"); return; }
+        if (!player.class) { addSys("Сначала выбери класс!"); return; }
+        if (player.inBattle) { addSys("Ты уже в бою! Закончи текущий бой."); return; }
         let today = new Date().toDateString();
         if (lastDailyBossDate !== today) {
             let bossList = ["🐉 Древний дракон", "👑 Король личей", "🌋 Повелитель магмы", "❄️ Ледяной титан", "💀 Жнец душ", "⚡ Громовой бог", "🌙 Лунный страж", "🔥 Феникс"];
@@ -588,7 +589,7 @@
             lastDailyBossDate = today;
             addSys(`⭐ Сегодняшний ежедневный босс: ${dailyBoss.name}! (сила зависит от твоего уровня)`);
         }
-        if (!dailyBoss) dailyBossFight();
+        if (!dailyBoss) { addSys("Ошибка: босс не создан"); return; }
         startBattle({ ...dailyBoss, drops: [] });
     }
     
@@ -793,7 +794,8 @@
     // Привязка кнопок
     document.getElementById("questBtn").onclick=()=>{if(player.class) showQuests(); else addSys("Выберите класс!");};
     document.getElementById("bossListBtn").onclick=()=>{if(player.class) showBosses(); else addSys("Выберите класс!");};
-    document.getElementById("dailyBossBtn").onclick=()=>{dailyBossFight();};
+    const dailyBtn = document.getElementById("dailyBossBtn");
+    if (dailyBtn) dailyBtn.onclick = () => dailyBossFight();
     document.getElementById("attackBtn").onclick=attack;
     document.getElementById("autoAttackBtn").onclick=toggleAutoAttack;
     document.getElementById("healBtn").onclick=heal;
@@ -803,7 +805,7 @@
     document.getElementById("inventoryBtn").onclick=showInventory;
     document.getElementById("craftBtn").onclick=showCraft;
     document.getElementById("achievementsBtn").onclick=showAchievements;
-    document.getElementById("dailyBtn").onclick=showDailyQuests;
+    document.getElementById("dailyQuestsBtn").onclick=showDailyQuests;
     document.getElementById("promoBtn").onclick=showPromoUI;
     document.getElementById("themeBtn").onclick=toggleTheme;
     document.getElementById("sendBtn").onclick=()=>{ let inp=document.getElementById("cmdInput"); processCmd(inp.value); inp.value=""; };
