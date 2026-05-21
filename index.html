@@ -37,7 +37,6 @@
         body.light input { background: #ffffff; color: #1a2a3a; border: 1px solid #c0d0e0; }
         body.light .sub-panel { background: #f0f4fa; }
         body.light .select-item, body.light .shop-item, body.light .craft-item { background: #e0e8f0; color: #1a2a3a; }
-        body.light .version { color: #888; }
         .game-container {
             max-width: 700px;
             margin: 0 auto;
@@ -50,16 +49,6 @@
             overflow: hidden;
             position: relative;
         }
-        .version {
-            position: absolute;
-            bottom: 4px;
-            right: 8px;
-            font-size: 0.55rem;
-            color: #4a6a8a;
-            opacity: 0.6;
-            z-index: 10;
-            pointer-events: none;
-        }
         .stats-panel {
             background: #010a17;
             padding: 8px 10px;
@@ -70,8 +59,18 @@
             font-size: 0.7rem;
             font-weight: bold;
             border-bottom: 1px solid #1f3a4b;
+            position: relative;
         }
         .stats-panel span { color: #f5bc70; }
+        .version-badge {
+            position: absolute;
+            top: 4px;
+            right: 8px;
+            font-size: 0.55rem;
+            color: #6a8aaa;
+            opacity: 0.7;
+            font-weight: normal;
+        }
         .enemy-panel {
             background: #0d1a2a;
             padding: 8px;
@@ -164,11 +163,11 @@
         .promo-btn, .theme-btn { background: #4a2e6e; grid-column: span 2; margin-top: 4px; }
         .theme-btn { background: #2e5a6e; }
         .glory { color: #ffd966; }
+        .daily-boss-btn { background: #8b5e3c; }
     </style>
 </head>
 <body>
 <div class="game-container">
-    <div class="version" id="versionDisplay">v0.3.3</div>
     <div class="stats-panel">
         <div>⚔️ <span id="className">???</span> | Ур.<span id="lvl">1</span></div>
         <div>❤️ <span id="hp">200</span>/<span id="maxHp">200</span></div>
@@ -177,6 +176,7 @@
         <div>✨ <span id="glory" class="glory">0</span></div>
         <div>⚡ УРН <span id="dmgStat">20</span></div>
         <div>🔑 <span id="keyCount">0</span></div>
+        <div class="version-badge" id="versionDisplay">v0.3.3</div>
     </div>
     <div class="enemy-panel" id="enemyPanel" style="display: none;">
         <span>👾 <span id="enemyName">Гоблин</span></span>
@@ -194,7 +194,7 @@
     <div class="buttons-panel">
         <button id="questBtn">📜 КВЕСТЫ</button>
         <button id="bossListBtn">👑 БОССЫ</button>
-        <button id="dailyBossBtn">⭐ ЕЖЕДНЕВНЫЙ</button>
+        <button id="dailyBossBtn" class="daily-boss-btn">⭐ ЕЖЕДНЕВНЫЙ</button>
         <button id="attackBtn">⚔️ АТАКА</button>
         <button id="autoAttackBtn">🔄 АВТО</button>
         <button id="healBtn">💚 ЛЕЧИТЬ</button>
@@ -278,7 +278,6 @@
         { name: "Ангел смерти", hp: 6200, atk: 650, gold: 4500, xp: 1850, glory: 170, key: "Небесный ключ", keyChance: 0.08 }
     ];
 
-    // Обычные боссы (12)
     const NORMAL_BOSSES = [
         { name: "🗿 Каменный страж", hp: 800, atk: 70, gold: 500, xp: 250, glory: 30, drops: [{ material: "Осколок магмы", qty: 2, chance: 1.0 }] },
         { name: "❄️ Ледяной дух", hp: 1200, atk: 95, gold: 750, xp: 380, glory: 40, drops: [{ material: "Ледяной осколок", qty: 2, chance: 1.0 }] },
@@ -294,7 +293,6 @@
         { name: "🐉 Изначальный дракон", hp: 26000, atk: 1650, gold: 25000, xp: 11500, glory: 550, drops: [{ material: "Осколок магмы", qty: 8, chance: 1.0 }, { material: "Рунический камень", qty: 6, chance: 1.0 }] }
     ];
 
-    // Элитные боссы (8)
     const ELITE_BOSSES = [
         { name: "🔥 Владыка магмы", needKey: "Медный ключ", hp: 1400, atk: 110, gold: 1000, xp: 500, glory: 60, drops: [{ material: "Осколок магмы", qty: 5, chance: 1.0 }, { weapon: "🌋 Рунический топор", class: "warrior", chance: 0.05 }] },
         { name: "❄️ Ледяной дракон", needKey: "Серебряный ключ", hp: 2500, atk: 170, gold: 1800, xp: 850, glory: 75, drops: [{ material: "Ледяной осколок", qty: 5, chance: 1.0 }, { weapon: "❄️ Ледяная сфера", class: "mage", chance: 0.05 }] },
@@ -305,9 +303,7 @@
         { name: "🧙 Магистр хаоса", needKey: "Магический ключ", hp: 14000, atk: 840, gold: 11500, xp: 5000, glory: 280, drops: [{ material: "Древний пергамент", qty: 6, chance: 1.0 }, { weapon: "🐉 Дыхание дракона", class: "mage", chance: 0.1 }] },
         { name: "🏔️ Горный титан", needKey: "Рунический ключ", hp: 18500, atk: 1100, gold: 16000, xp: 6800, glory: 360, drops: [{ material: "Рунический камень", qty: 8, chance: 1.0 }, { weapon: "⚜️ Клинок Тысячи битв", class: "warrior", chance: 0.12 }] }
     ];
-    // ==================================================================
 
-    // ======================== // ВСЕ КРАФТЫ (ваши оригинальные) // ========================
     function getCraftsByClass(className) {
         if (className === "warrior") return [
             { name: "🌋 Рунический топор", weaponName: "🌋 Рунический топор", dmg: 88, items: [{ name: "Осколок магмы", qty: 5 }, { name: "Рунический камень", qty: 3 }] },
@@ -346,9 +342,7 @@
             { name: "🔥 Пламенный лук", weaponName: "🔥 Пламенный лук", dmg: 230, items: [{ name: "Осколок магмы", qty: 8 }, { name: "Древний пергамент", qty: 3 }] }
         ];
     }
-    // ==================================================================
 
-    // ======================== // МАГАЗИН (20 уровней оружия на класс) // ========================
     const WEAPONS = {
         warrior: [
             { name: "⚔️ Ржавый меч", dmg: 12, cost: 0, desc: "Простейший меч новичка." },
@@ -417,7 +411,6 @@
             { name: "🌌 Артефакт лучника", dmg: 590, cost: 80000, desc: "Абсолютная меткость." }
         ]
     };
-    // ==================================================================
 
     const GLORY_SHOP = [
         { name: "📜 Свиток опыта", cost: 50, effect: "exp", value: 200, desc: "+200 опыта" },
@@ -576,13 +569,24 @@
     }
     
     function dailyBossFight() {
+        if (!player.class) { addSys("Выберите класс!"); return; }
         let today = new Date().toDateString();
         if (lastDailyBossDate !== today) {
-            let bosses = ["🐉 Древний дракон", "👑 Король личей", "🌋 Повелитель магмы", "❄️ Ледяной титан", "💀 Жнец душ", "⚡ Громовой бог"];
-            let randomBoss = bosses[Math.floor(Math.random() * bosses.length)];
-            dailyBoss = { name: randomBoss, hp: 800 + player.level * 50, atk: 100 + player.level * 5, gold: 2000, xp: 800, glory: 150 };
+            let bossList = ["🐉 Древний дракон", "👑 Король личей", "🌋 Повелитель магмы", "❄️ Ледяной титан", "💀 Жнец душ", "⚡ Громовой бог", "🌙 Лунный страж", "🔥 Феникс"];
+            let randomBoss = bossList[Math.floor(Math.random() * bossList.length)];
+            let baseHp = 600 + player.level * 40;
+            let baseAtk = 80 + player.level * 4;
+            dailyBoss = { 
+                name: randomBoss, 
+                hp: baseHp, 
+                atk: baseAtk, 
+                gold: 1500 + player.level * 50, 
+                xp: 600 + player.level * 20, 
+                glory: 100 + player.level * 5,
+                drops: []
+            };
             lastDailyBossDate = today;
-            addSys(`⭐ Сегодняшний ежедневный босс: ${dailyBoss.name}!`);
+            addSys(`⭐ Сегодняшний ежедневный босс: ${dailyBoss.name}! (сила зависит от твоего уровня)`);
         }
         if (!dailyBoss) dailyBossFight();
         startBattle({ ...dailyBoss, drops: [] });
@@ -786,9 +790,10 @@
         updateUI();
     }
     
+    // Привязка кнопок
     document.getElementById("questBtn").onclick=()=>{if(player.class) showQuests(); else addSys("Выберите класс!");};
     document.getElementById("bossListBtn").onclick=()=>{if(player.class) showBosses(); else addSys("Выберите класс!");};
-    document.getElementById("dailyBossBtn").onclick=()=>{if(player.class) dailyBossFight(); else addSys("Выберите класс!");};
+    document.getElementById("dailyBossBtn").onclick=()=>{dailyBossFight();};
     document.getElementById("attackBtn").onclick=attack;
     document.getElementById("autoAttackBtn").onclick=toggleAutoAttack;
     document.getElementById("healBtn").onclick=heal;
