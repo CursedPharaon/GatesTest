@@ -27,7 +27,7 @@
         .version-badge { position: absolute; top: 4px; right: 8px; font-size: 0.55rem; color: #6a8aaa; opacity: 0.7; }
         .enemy-panel { background: #0d1a2a; padding: 8px; margin: 6px 10px; border-radius: 20px; display: flex; justify-content: space-between; font-weight: bold; font-size: 0.8rem; }
         .enemy-effects { font-size: 0.65rem; color: #ffaa66; }
-        .chat { max-height: 35vh; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: #051020; font-size: 0.8rem; }
+        .chat { max-height: 35vh; overflow-y: auto; padding: 10px; background: #051020; font-size: 0.8rem; }
         .msg { background: #0f1a2c; padding: 6px 10px; border-radius: 18px; word-wrap: break-word; border-left: 3px solid #4c7a9a; align-self: flex-start; max-width: 94%; }
         .msg.system { background: #121e2e; border-left-color: #d6b356; }
         .msg.achievement { background: #1a2a1a; border-left-color: #6bc46b; }
@@ -89,7 +89,8 @@
     </div>
     <div class="chat" id="chatArea">
         <div class="msg system">🌀 Тысячи врат. Добро пожаловать!</div>
-        <div class="msg system">💡 Команды: статы, помощь, инфо, очистить, /передать Имя 100, /топ</div>
+        <div class="msg system">💡 Команды: статы, помощь, очистить, /передать Имя 100, /топ, /синхронизация</div>
+        <div class="msg system">👑 Админ-команды: /админ хп Имя 500 | /админ лвл Имя 10 | /админ слава Имя 100 | /админ голд Имя 5000 | /админ урон Имя 50 | /админ броня Имя 25 | /админ ключ Имя Медный ключ 5 | /админ меч Имя Название 150 | /админ материал Имя Рунический камень 10 | /админ все Имя</div>
     </div>
     <div id="dynamicPanel" class="sub-panel hidden"></div>
     <div class="buttons-panel">
@@ -118,110 +119,17 @@
 </div>
 
 <script>
-    // ========== SUPABASE ==========
+    // ========== НАСТРОЙКИ ==========
     const SUPABASE_URL = "https://tmjqafqecjpizawdruzq.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtanFhZnFlY2pwaXphd2RydXpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTk2OTYsImV4cCI6MjA5NTQ3NTY5Nn0.8K7i5QEbjYWSvqw78P8RSR_abYM8uCRZbvC9Hp12bac";
+    const ADMIN_NAME = "ТВОЁ_ИМЯ";  // ← ВСТАВЬ СВОЁ ИМЯ СЮДА!
+    const GAME_VERSION = "1.0.0";
+    document.getElementById("versionDisplay").innerText = "v" + GAME_VERSION;
+    // =================================
     
     let currentPlayerName = null;
     
-    async function supabaseLoadPlayer(username) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(username)}`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        const data = await res.json();
-        return data?.[0] || null;
-    }
-    
-    async function supabaseCreatePlayer(username) {
-        const newPlayer = { username: username, gold: 800, glory: 0, level: 1, hp: 200, max_hp: 200 };
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(newPlayer)
-        });
-        const data = await res.json();
-        return data[0] || newPlayer;
-    }
-    
-    async function supabaseSavePlayer() {
-        if (!currentPlayerName) return;
-        
-        // Сохраняем ВСЕ важные данные
-        const saveData = {
-            gold: player.gold,
-            glory: player.glory,
-            level: player.level,
-            hp: player.hp,
-            max_hp: player.maxHp
-        };
-        
-        await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${currentPlayerName}`, {
-            method: 'PATCH',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(saveData)
-        });
-    }
-    
-    async function supabaseTransferGold(toName, amount) {
-        if (amount <= 0) return "❌ Сумма должна быть больше 0";
-        if (player.gold < amount) return "❌ Не хватает золота";
-        if (toName === currentPlayerName) return "❌ Нельзя передать самому себе";
-        
-        // Загружаем получателя
-        const target = await supabaseLoadPlayer(toName);
-        if (!target) return "❌ Игрок не найден";
-        
-        // Снимаем у отправителя
-        player.gold -= amount;
-        await supabaseSavePlayer();
-        
-        // Добавляем получателю через прямое обновление
-        const targetNewGold = target.gold + amount;
-        const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(toName)}`, {
-            method: 'PATCH',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gold: targetNewGold })
-        });
-        
-        if (!updateRes.ok) {
-            // Если ошибка — возвращаем деньги
-            player.gold += amount;
-            await supabaseSavePlayer();
-            return "❌ Ошибка передачи, деньги возвращены";
-        }
-        
-        updateUI();
-        return `💰 Передано ${amount} золота игроку ${toName}!`;
-    }
-    
-    async function supabaseShowTop() {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?select=username,glory,gold,level&order=glory.desc&limit=10`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        const players = await res.json();
-        let msg = "🏆 ТОП-10 ПО СЛАВЕ 🏆<br>";
-        players.forEach((p, i) => { msg += `${i+1}. ${p.username} — ✨${p.glory} | 🪙${p.gold} | Ур.${p.level}<br>`; });
-        return msg;
-    }
-    
-    async function fullReloadFromDatabase() {
-        if (!currentPlayerName) return;
-        const dbPlayer = await supabaseLoadPlayer(currentPlayerName);
-        if (dbPlayer) {
-            player.gold = dbPlayer.gold;
-            player.glory = dbPlayer.glory;
-            player.level = dbPlayer.level;
-            player.hp = dbPlayer.hp;
-            player.maxHp = dbPlayer.max_hp;
-            updateUI();
-            addSys("🔄 Данные синхронизированы с сервером");
-        }
-    }
-    
-    // Версия
-    const GAME_VERSION = "1.0.0";
-    document.getElementById("versionDisplay").innerText = "v" + GAME_VERSION;
-    
+    // ==== ЗВУКИ ====
     let audioCtx = null;
     function playSound(type) {
         try {
@@ -250,15 +158,232 @@
         setTimeout(() => toast.remove(), 2000);
     }
     
-    // Промокоды
+    // ==== SUPABASE ФУНКЦИИ ====
+    async function supabaseLoadPlayer(username) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(username)}`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        const data = await res.json();
+        return data?.[0] || null;
+    }
+    
+    async function supabaseSavePlayer() {
+        if (!currentPlayerName) return;
+        await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${currentPlayerName}`, {
+            method: 'PATCH',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gold: player.gold,
+                glory: player.glory,
+                level: player.level,
+                hp: player.hp,
+                max_hp: player.maxHp
+            })
+        });
+    }
+    
+    async function supabaseCreatePlayer(username) {
+        const newPlayer = { username: username, gold: 800, glory: 0, level: 1, hp: 200, max_hp: 200 };
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/players`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(newPlayer)
+        });
+        const data = await res.json();
+        return data[0] || newPlayer;
+    }
+    
+    async function supabaseAdminUpdate(targetName, updates) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(targetName)}`, {
+            method: 'PATCH',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+        return res.ok;
+    }
+    
+    async function supabaseTransferGold(toName, amount) {
+        if (amount <= 0) return "❌ Сумма должна быть больше 0";
+        if (player.gold < amount) return "❌ Не хватает золота";
+        if (toName === currentPlayerName) return "❌ Нельзя передать самому себе";
+        
+        const target = await supabaseLoadPlayer(toName);
+        if (!target) return "❌ Игрок не найден";
+        
+        player.gold -= amount;
+        await supabaseSavePlayer();
+        
+        await supabaseAdminUpdate(toName, { gold: target.gold + amount });
+        
+        updateUI();
+        return `💰 Передано ${amount} золота игроку ${toName}!`;
+    }
+    
+    async function supabaseShowTop() {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?select=username,glory,gold,level&order=glory.desc&limit=10`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        const players = await res.json();
+        let msg = "🏆 ТОП-10 ПО СЛАВЕ 🏆<br>";
+        players.forEach((p, i) => { msg += `${i+1}. ${p.username} — ✨${p.glory} | 🪙${p.gold} | Ур.${p.level}<br>`; });
+        return msg;
+    }
+    
+    async function fullSync() {
+        if (!currentPlayerName) return;
+        addSys("🔄 Синхронизация с сервером...");
+        const dbPlayer = await supabaseLoadPlayer(currentPlayerName);
+        if (dbPlayer) {
+            player.gold = dbPlayer.gold;
+            player.glory = dbPlayer.glory;
+            player.level = dbPlayer.level;
+            player.hp = dbPlayer.hp;
+            player.maxHp = dbPlayer.max_hp;
+            updateUI();
+            addSys("✅ Данные синхронизированы с сервером");
+            showToast("Синхронизация завершена");
+        } else {
+            addSys("❌ Ошибка синхронизации");
+        }
+    }
+    
+    // ==== АДМИН-КОМАНДЫ ====
+    async function adminCommand(cmd) {
+        if (currentPlayerName !== ADMIN_NAME) {
+            addSys("❌ У вас нет прав администратора");
+            return false;
+        }
+        
+        const parts = cmd.split(" ");
+        const action = parts[1]?.toLowerCase();
+        const targetName = parts[2];
+        const value = parts[3];
+        const extra = parts[4];
+        
+        if (!targetName) {
+            addSys("❌ Укажите имя игрока");
+            return false;
+        }
+        
+        const target = await supabaseLoadPlayer(targetName);
+        if (!target && action !== "все") {
+            addSys(`❌ Игрок ${targetName} не найден`);
+            return false;
+        }
+        
+        if (action === "хп" && value) {
+            const newHp = parseInt(value);
+            await supabaseAdminUpdate(targetName, { hp: newHp, max_hp: newHp });
+            addSys(`❤️ Игроку ${targetName} установлено HP = ${newHp}`);
+            if (targetName === currentPlayerName) await fullSync();
+            return true;
+        }
+        
+        if (action === "лвл" && value) {
+            const newLevel = parseInt(value);
+            await supabaseAdminUpdate(targetName, { level: newLevel });
+            addSys(`⭐ Игроку ${targetName} установлен уровень ${newLevel}`);
+            if (targetName === currentPlayerName) await fullSync();
+            return true;
+        }
+        
+        if (action === "слава" && value) {
+            const newGlory = parseInt(value);
+            await supabaseAdminUpdate(targetName, { glory: newGlory });
+            addSys(`✨ Игроку ${targetName} установлена слава ${newGlory}`);
+            if (targetName === currentPlayerName) await fullSync();
+            return true;
+        }
+        
+        if (action === "голд" && value) {
+            const newGold = parseInt(value);
+            await supabaseAdminUpdate(targetName, { gold: newGold });
+            addSys(`🪙 Игроку ${targetName} установлено золото ${newGold}`);
+            if (targetName === currentPlayerName) await fullSync();
+            return true;
+        }
+        
+        if (action === "урон" && value) {
+            const newDmg = parseInt(value);
+            if (player.weapon) {
+                player.weapon.dmg = newDmg;
+                addSys(`⚔️ Игроку ${targetName} установлен урон оружия = ${newDmg}`);
+            } else {
+                addSys(`❌ У игрока ${targetName} нет оружия`);
+            }
+            return true;
+        }
+        
+        if (action === "ключ" && value && extra) {
+            const keyName = parts[3];
+            const keyQty = parseInt(parts[4]);
+            if (!isNaN(keyQty)) {
+                player.keys[keyName] = (player.keys[keyName] || 0) + keyQty;
+                addSys(`🔑 Игроку ${targetName} выдано ${keyQty}x ${keyName}`);
+                await supabaseSavePlayer();
+                return true;
+            }
+        }
+        
+        if (action === "меч" && value) {
+            const swordName = parts.slice(3, -1).join(" ");
+            const swordDmg = parseInt(parts[parts.length - 1]);
+            if (!isNaN(swordDmg)) {
+                player.weapon = { name: swordName, dmg: swordDmg };
+                addSys(`⚔️ Игроку ${targetName} выдан меч "${swordName}" (урон +${swordDmg})`);
+                await supabaseSavePlayer();
+                updateUI();
+                return true;
+            }
+        }
+        
+        if (action === "материал" && value && extra) {
+            const matName = parts[3];
+            const matQty = parseInt(parts[4]);
+            if (!isNaN(matQty)) {
+                player.materials[matName] = (player.materials[matName] || 0) + matQty;
+                addSys(`📦 Игроку ${targetName} выдано ${matQty}x ${matName}`);
+                await supabaseSavePlayer();
+                return true;
+            }
+        }
+        
+        if (action === "все") {
+            addSys(`📊 ДАННЫЕ ИГРОКА ${targetName}:`);
+            addSys(`🪙 Золото: ${target.gold}`);
+            addSys(`✨ Слава: ${target.glory}`);
+            addSys(`⭐ Уровень: ${target.level}`);
+            addSys(`❤️ HP: ${target.hp}/${target.max_hp}`);
+            return true;
+        }
+        
+        addSys(`❌ Неизвестная админ-команда. Доступно: хп, лвл, слава, голд, урон, ключ, меч, материал, все`);
+        return false;
+    }
+    
+    // ==== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====
+    function addSys(msg, type = "system") { 
+        let chat = document.getElementById("chatArea"); 
+        let d = document.createElement("div"); 
+        d.className = `msg ${type}`; 
+        d.innerHTML = msg; 
+        chat.appendChild(d); 
+        chat.scrollTop = chat.scrollHeight; 
+        if (chat.children.length > 200) chat.removeChild(chat.children[0]);
+    }
+    
+    function clearChat() {
+        let chat = document.getElementById("chatArea");
+        chat.innerHTML = '<div class="msg system">🌀 Чат очищен.</div><div class="msg system">💡 Команды: статы, помощь, очистить, /передать Имя 100, /топ, /синхронизация</div><div class="msg system">👑 Админ-команды: /админ хп Имя 500 | /админ лвл Имя 10 | /админ слава Имя 100 | /админ голд Имя 5000 | /админ урон Имя 50 | /админ ключ Имя Медный ключ 5 | /админ меч Имя Название 150 | /админ материал Имя Рунический камень 10 | /админ все Имя</div>';
+    }
+    
+    // ==== ИГРОВЫЕ ДАННЫЕ ====
     const PROMO_CODES = [
-        { code: "TEMPLATE", name: "Тестовый шаблон", money: 1, exp: 1, glory: 1, keyBonus: "Медный ключ", keyQty: 1, materialBonus: "Осколок магмы", materialQty: 1 },
         { code: "WELCOME", name: "Приветственный бонус", money: 500, exp: 100, glory: 50 },
-        { code: "GOLDENKEY", name: "Золотой сундук", money: 1000, exp: 250, glory: 100, keyBonus: "Золотой ключ", keyQty: 1 },
-        { code: "DRAGONCRY", name: "Рёв дракона", money: 2500, exp: 500, glory: 200, keyBonus: "Драконий ключ", keyQty: 1, materialBonus: "Рунический камень", materialQty: 3 }
+        { code: "GOLDENKEY", name: "Золотой сундук", money: 1000, glory: 100, keyBonus: "Золотой ключ", keyQty: 1 },
+        { code: "DRAGONCRY", name: "Рёв дракона", money: 2500, glory: 200, keyBonus: "Драконий ключ", keyQty: 1, materialBonus: "Рунический камень", materialQty: 3 }
     ];
     
-    // Достижения
     let achievements = {
         kills: { current: 0, target: 10, reward: { gold: 500, glory: 50 }, claimed: false, name: "Новичок", desc: "Убить 10 врагов" },
         eliteKills: { current: 0, target: 5, reward: { gold: 1000, glory: 100 }, claimed: false, name: "Истребитель элиты", desc: "Убить 5 элитных боссов" },
@@ -267,12 +392,12 @@
         level: { current: 0, target: 20, reward: { gold: 3000, glory: 200 }, claimed: false, name: "Герой", desc: "Достичь 20 уровня" }
     };
     
-    // Задания
     let dailyQuests = [
         { name: "Победить 3 врагов", type: "kill", target: 3, current: 0, reward: { gold: 300, glory: 30 }, claimed: false },
         { name: "Заработать 1000 золота", type: "gold", target: 1000, current: 0, reward: { gold: 200, glory: 20 }, claimed: false },
         { name: "Победить 1 элитного босса", type: "elite", target: 1, current: 0, reward: { gold: 500, glory: 50 }, claimed: false }
     ];
+    
     let weeklyQuests = [
         { name: "Победить 20 врагов", type: "kill", target: 20, current: 0, reward: { gold: 1500, glory: 150 }, claimed: false },
         { name: "Заработать 5000 золота", type: "gold", target: 5000, current: 0, reward: { gold: 1000, glory: 100 }, claimed: false },
@@ -280,27 +405,21 @@
         { name: "Победить 3 элитных босса", type: "elite", target: 3, current: 0, reward: { gold: 2000, glory: 200 }, claimed: false }
     ];
     
-    // Таланты
     let talents = { availablePoints: 0, physical: { level: 0, bonus: 0, max: 10 }, crit: { level: 0, bonus: 0, max: 10 }, health: { level: 0, bonus: 0, max: 10 } };
     
-    // Экипировка
     let equipment = { helmet: null, chest: null, boots: null, ring: null };
     const EQUIPMENT_DROPS = {
-        helmet: [{ name: "🪖 Кожаный шлем", armor: 5, hpBonus: 20, rarity: "common" }, { name: "🪖 Стальной шлем", armor: 12, hpBonus: 40, rarity: "rare" }, { name: "🪖 Шлем дракона", armor: 25, hpBonus: 80, rarity: "epic" }],
-        chest: [{ name: "🛡️ Кожаная броня", armor: 8, hpBonus: 30, rarity: "common" }, { name: "🛡️ Стальная кираса", armor: 18, hpBonus: 60, rarity: "rare" }, { name: "🛡️ Доспех дракона", armor: 35, hpBonus: 120, rarity: "epic" }],
-        boots: [{ name: "👢 Кожаные сапоги", armor: 3, hpBonus: 10, rarity: "common" }, { name: "👢 Стальные сапоги", armor: 8, hpBonus: 25, rarity: "rare" }, { name: "👢 Сапоги дракона", armor: 15, hpBonus: 50, rarity: "epic" }],
-        ring: [{ name: "💍 Кольцо воина", armor: 2, hpBonus: 15, rarity: "common" }, { name: "💍 Кольцо силы", armor: 6, hpBonus: 35, rarity: "rare" }, { name: "💍 Кольцо дракона", armor: 12, hpBonus: 70, rarity: "epic" }]
+        helmet: [{ name: "🪖 Кожаный шлем", armor: 5, hpBonus: 20 }, { name: "🪖 Стальной шлем", armor: 12, hpBonus: 40 }, { name: "🪖 Шлем дракона", armor: 25, hpBonus: 80 }],
+        chest: [{ name: "🛡️ Кожаная броня", armor: 8, hpBonus: 30 }, { name: "🛡️ Стальная кираса", armor: 18, hpBonus: 60 }, { name: "🛡️ Доспех дракона", armor: 35, hpBonus: 120 }],
+        boots: [{ name: "👢 Кожаные сапоги", armor: 3, hpBonus: 10 }, { name: "👢 Стальные сапоги", armor: 8, hpBonus: 25 }, { name: "👢 Сапоги дракона", armor: 15, hpBonus: 50 }],
+        ring: [{ name: "💍 Кольцо воина", armor: 2, hpBonus: 15 }, { name: "💍 Кольцо силы", armor: 6, hpBonus: 35 }, { name: "💍 Кольцо дракона", armor: 12, hpBonus: 70 }]
     };
     function getRandomEquipment() {
         const types = ["helmet", "chest", "boots", "ring"];
         const type = types[Math.floor(Math.random() * types.length)];
         const items = EQUIPMENT_DROPS[type];
-        let rarity = "common";
-        const roll = Math.random();
-        if (roll < 0.15) rarity = "epic";
-        else if (roll < 0.40) rarity = "rare";
-        const item = items.find(i => i.rarity === rarity);
-        return { type, ...(item || items[0]) };
+        const item = items[Math.floor(Math.random() * items.length)];
+        return { type, ...item };
     }
     
     let weaponUpgrade = 0;
@@ -310,7 +429,6 @@
     let trialWaves = 0;
     let trialMaxWaves = 5;
     
-    // Боссы
     const QUESTS = [
         { name: "Лесной гоблин", hp: 160, atk: 28, gold: 90, xp: 45, glory: 5, key: "Медный ключ", keyChance: 0.6 },
         { name: "Каменный тролль", hp: 290, atk: 42, gold: 150, xp: 80, glory: 8, key: "Серебряный ключ", keyChance: 0.55 },
@@ -353,15 +471,52 @@
     ];
     
     function getCraftsByClass(className) {
-        if (className === "warrior") return [{ name: "🌋 Рунический топор", weaponName: "🌋 Рунический топор", dmg: 88, items: [{ name: "Осколок магмы", qty: 5 }, { name: "Рунический камень", qty: 3 }] }];
-        if (className === "mage") return [{ name: "🌙 Посох луны", weaponName: "🌙 Посох луны", dmg: 50, items: [{ name: "Лунная пыль", qty: 6 }, { name: "Древний пергамент", qty: 3 }] }];
-        return [{ name: "💀 Лук смерти", weaponName: "💀 Лук смерти", dmg: 63, items: [{ name: "Теневые нити", qty: 8 }, { name: "Эссенция тьмы", qty: 3 }] }];
+        if (className === "warrior") return [
+            { name: "🌋 Рунический топор", weaponName: "🌋 Рунический топор", dmg: 88, items: [{ name: "Осколок магмы", qty: 5 }, { name: "Рунический камень", qty: 3 }] },
+            { name: "💀 Жнец душ", weaponName: "💀 Жнец душ", dmg: 75, items: [{ name: "Теневые нити", qty: 6 }, { name: "Эссенция тьмы", qty: 3 }] },
+            { name: "⚜️ Клинок Тысячи битв", weaponName: "⚜️ Клинок Тысячи битв", dmg: 118, items: [{ name: "Древний пергамент", qty: 4 }, { name: "Рунический камень", qty: 5 }] }
+        ];
+        if (className === "mage") return [
+            { name: "🌙 Посох луны", weaponName: "🌙 Посох луны", dmg: 50, items: [{ name: "Лунная пыль", qty: 6 }, { name: "Древний пергамент", qty: 3 }] },
+            { name: "💀 Череп некроманта", weaponName: "💀 Череп некроманта", dmg: 62, items: [{ name: "Теневые нити", qty: 7 }, { name: "Эссенция тьмы", qty: 4 }] },
+            { name: "🐉 Дыхание дракона", weaponName: "🐉 Дыхание дракона", dmg: 76, items: [{ name: "Осколок магмы", qty: 8 }, { name: "Древний пергамент", qty: 4 }] }
+        ];
+        return [
+            { name: "💀 Лук смерти", weaponName: "💀 Лук смерти", dmg: 63, items: [{ name: "Теневые нити", qty: 8 }, { name: "Эссенция тьмы", qty: 3 }] },
+            { name: "⚜️ Лук Тысячи битв", weaponName: "⚜️ Лук Тысячи битв", dmg: 126, items: [{ name: "Лунная пыль", qty: 6 }, { name: "Рунический камень", qty: 4 }] },
+            { name: "🐉 Укус виверны", weaponName: "🐉 Укус виверны", dmg: 77, items: [{ name: "Древний пергамент", qty: 5 }, { name: "Осколок магмы", qty: 7 }] }
+        ];
     }
     
     const WEAPONS = {
-        warrior: [{ name: "⚔️ Ржавый меч", dmg: 12, cost: 0 }, { name: "🛡️ Стальной клинок", dmg: 22, cost: 400 }, { name: "🗡️ Меч ветра", dmg: 32, cost: 850 }, { name: "🔥 Пламенный топор", dmg: 42, cost: 1350 }, { name: "❄️ Ледяной рассекатель", dmg: 52, cost: 1950 }, { name: "💀 Жнец душ", dmg: 75, cost: 3500 }, { name: "🌋 Рунический топор", dmg: 88, cost: 4600 }, { name: "⚜️ Клинок Тысячи битв", dmg: 118, cost: 7500 }],
-        mage: [{ name: "🔮 Деревянный посох", dmg: 10, cost: 0 }, { name: "🔥 Жезл огня", dmg: 20, cost: 400 }, { name: "❄️ Ледяная сфера", dmg: 30, cost: 850 }, { name: "⚡ Грозовой жезл", dmg: 40, cost: 1350 }, { name: "🌙 Посох луны", dmg: 50, cost: 1950 }, { name: "💀 Череп некроманта", dmg: 62, cost: 2650 }, { name: "🐉 Дыхание дракона", dmg: 76, cost: 3500 }, { name: "🌀 Кристалл бури", dmg: 90, cost: 4600 }],
-        archer: [{ name: "🏹 Короткий лук", dmg: 11, cost: 0 }, { name: "🌪️ Ветреный арбалет", dmg: 21, cost: 400 }, { name: "🔥 Огненный лук", dmg: 31, cost: 850 }, { name: "❄️ Ледяная стрела", dmg: 41, cost: 1350 }, { name: "💀 Лук смерти", dmg: 63, cost: 2650 }, { name: "🐉 Укус виверны", dmg: 77, cost: 3500 }, { name: "🌀 Стрела хаоса", dmg: 92, cost: 4600 }, { name: "✨ Небесный лук", dmg: 108, cost: 5900 }]
+        warrior: [
+            { name: "⚔️ Ржавый меч", dmg: 12, cost: 0 },
+            { name: "🛡️ Стальной клинок", dmg: 22, cost: 400 },
+            { name: "🗡️ Меч ветра", dmg: 32, cost: 850 },
+            { name: "🔥 Пламенный топор", dmg: 42, cost: 1350 },
+            { name: "❄️ Ледяной рассекатель", dmg: 52, cost: 1950 },
+            { name: "💀 Жнец душ", dmg: 75, cost: 3500 },
+            { name: "🌋 Рунический топор", dmg: 88, cost: 4600 },
+            { name: "⚜️ Клинок Тысячи битв", dmg: 118, cost: 7500 }
+        ],
+        mage: [
+            { name: "🔮 Деревянный посох", dmg: 10, cost: 0 },
+            { name: "🔥 Жезл огня", dmg: 20, cost: 400 },
+            { name: "❄️ Ледяная сфера", dmg: 30, cost: 850 },
+            { name: "⚡ Грозовой жезл", dmg: 40, cost: 1350 },
+            { name: "🌙 Посох луны", dmg: 50, cost: 1950 },
+            { name: "💀 Череп некроманта", dmg: 62, cost: 2650 },
+            { name: "🐉 Дыхание дракона", dmg: 76, cost: 3500 }
+        ],
+        archer: [
+            { name: "🏹 Короткий лук", dmg: 11, cost: 0 },
+            { name: "🌪️ Ветреный арбалет", dmg: 21, cost: 400 },
+            { name: "🔥 Огненный лук", dmg: 31, cost: 850 },
+            { name: "❄️ Ледяная стрела", dmg: 41, cost: 1350 },
+            { name: "💀 Лук смерти", dmg: 63, cost: 2650 },
+            { name: "🐉 Укус виверны", dmg: 77, cost: 3500 },
+            { name: "✨ Небесный лук", dmg: 108, cost: 5900 }
+        ]
     };
     
     const GLORY_SHOP = [
@@ -369,7 +524,9 @@
         { name: "💰 Мешок золота", cost: 30, effect: "gold", value: 500 },
         { name: "🔑 Серебряный ключ", cost: 100, effect: "key", keyName: "Серебряный ключ", value: 1 },
         { name: "🔑 Золотой ключ", cost: 200, effect: "key", keyName: "Золотой ключ", value: 1 },
-        { name: "📦 Рунический камень", cost: 80, effect: "material", materialName: "Рунический камень", value: 2 }
+        { name: "🔑 Драконий ключ", cost: 500, effect: "key", keyName: "Драконий ключ", value: 1 },
+        { name: "📦 Рунический камень", cost: 80, effect: "material", materialName: "Рунический камень", value: 2 },
+        { name: "📦 Эссенция тьмы", cost: 120, effect: "material", materialName: "Эссенция тьмы", value: 1 }
     ];
     
     let player = {
@@ -380,21 +537,7 @@
         usedPromoCodes: [], stats: { totalKills: 0, eliteKills: 0, totalCrafts: 0, totalGoldEarned: 0 }
     };
     
-    function addSys(msg, type = "system") { 
-        let chat = document.getElementById("chatArea"); 
-        let d = document.createElement("div"); 
-        d.className = `msg ${type}`; 
-        d.innerHTML = msg; 
-        chat.appendChild(d); 
-        chat.scrollTop = chat.scrollHeight; 
-        if (chat.children.length > 200) chat.removeChild(chat.children[0]);
-    }
-    
-    function clearChat() {
-        let chat = document.getElementById("chatArea");
-        chat.innerHTML = '<div class="msg system">🌀 Чат очищен.</div><div class="msg system">💡 Команды: статы, помощь, инфо, очистить, /передать Имя 100, /топ, /синхронизация</div>';
-    }
-    
+    // ==== БОЕВЫЕ ФУНКЦИИ ====
     function getTotalDamageBonus() { return 1 + (talents.physical.bonus / 100); }
     function getCritChance() { return 0.05 + (talents.crit.bonus / 100); }
     function getMaxHpBonus() { return 1 + (talents.health.bonus / 100); }
@@ -442,6 +585,7 @@
         player.currentEnemy.hp -= dmg;
         addSys(`⚔️ Урон ${dmg}${isCrit ? " (КРИТ)" : ""}. У ${player.currentEnemy.name} осталось ${Math.max(0, Math.floor(player.currentEnemy.hp))} HP.`);
         if (Math.random() < 0.2) { enemyEffects.bleed = Math.max(enemyEffects.bleed, 3); addSys("🩸 Враг истекает кровью!"); }
+        if (Math.random() < 0.15) { enemyEffects.poison = Math.max(enemyEffects.poison, 3); addSys("☠️ Враг отравлен!"); }
         if (player.currentEnemy.hp <= 0) { defeatEnemy(); }
         updateUI(); 
         supabaseSavePlayer();
@@ -464,18 +608,22 @@
         playSound("victory");
         showToast(`+${goldGain}💰 +${xpGain}✨`);
         
-        dailyQuests.forEach(q => { if (!q.claimed && q.type === "kill") { q.current += 1; if (q.current >= q.target) addSys(`📅 Задание выполнено: ${q.name}!`); } });
-        if (player.currentEnemy.needKey) {
-            dailyQuests.forEach(q => { if (!q.claimed && q.type === "elite") { q.current += 1; } });
-        }
+        checkDailyWeeklyProgress("kill", 1);
+        checkDailyWeeklyProgress("gold", goldGain);
+        if (player.currentEnemy.needKey) checkDailyWeeklyProgress("elite", 1);
         
         if (player.currentEnemy.equipmentChance && Math.random() < player.currentEnemy.equipmentChance) {
             const newEquip = getRandomEquipment();
             const oldItem = equipment[newEquip.type];
             if (!oldItem || newEquip.armor > oldItem.armor) {
                 equipment[newEquip.type] = newEquip;
-                if (newEquip.hpBonus) { player.maxHp += newEquip.hpBonus; if (oldItem?.hpBonus) player.maxHp -= oldItem.hpBonus; player.hp = player.maxHp; }
-                addSys(`✨ ВЫ НАШЛИ: ${newEquip.name}!`, "achievement");
+                if (newEquip.hpBonus) {
+                    player.maxHp += newEquip.hpBonus;
+                    if (oldItem && oldItem.hpBonus) player.maxHp -= oldItem.hpBonus;
+                    player.hp = player.maxHp;
+                }
+                addSys(`✨ ВЫ НАШЛИ: ${newEquip.name}! (Защита +${newEquip.armor}, HP +${newEquip.hpBonus})`, "achievement");
+                showToast(`🎁 ${newEquip.name}`);
             }
         }
         
@@ -515,7 +663,7 @@
                 trialWaves = 0;
                 showToast("Испытание пройдено!");
             } else {
-                addSys(`🔥 Испытание: волна ${trialWaves+1}/${trialMaxWaves}. Следующий враг...`);
+                addSys(`🔥 Испытание: волна ${trialWaves+1}/${trialMaxWaves}. Следующий враг появляется...`);
                 startNextTrialWave();
                 supabaseSavePlayer();
                 return;
@@ -536,7 +684,7 @@
         nextBoss.atk = Math.floor(nextBoss.atk * (1 + trialWaves * 0.1));
         player.currentEnemy = nextBoss;
         player.inBattle = true;
-        addSys(`⚔️ ВОЛНА ${trialWaves+1}: Бой с ${nextBoss.name}`);
+        addSys(`⚔️ ВОЛНА ${trialWaves+1}: Бой с ${nextBoss.name} (❤️ ${nextBoss.hp} | ⚔️ ${nextBoss.atk})`);
         updateUI();
     }
     
@@ -678,7 +826,13 @@
         supabaseSavePlayer();
     }
     
-    // Меню
+    function checkDailyWeeklyProgress(type, amount = 1) {
+        dailyQuests.forEach(q => { if (!q.claimed && q.type === type) { q.current += amount; if (q.current >= q.target) addSys(`📅 Ежедневное задание выполнено: ${q.name}! Забери награду в меню заданий.`); } });
+        weeklyQuests.forEach(q => { if (!q.claimed && q.type === type) { q.current += amount; if (q.current >= q.target) addSys(`📆 Еженедельное задание выполнено: ${q.name}! Забери награду в меню заданий.`); } });
+        supabaseSavePlayer();
+    }
+    
+    // ==== МЕНЮ ====
     function showQuests() { 
         let panel = document.getElementById("dynamicPanel"); 
         panel.innerHTML = `<strong>📜 КВЕСТЫ (12)</strong><div class="select-list">`+QUESTS.map((q,i)=>`<div class="select-item" data-idx="${i}">${q.name} (❤️${q.hp} ⚔️${q.atk}) ➜ ${q.key} +${q.glory}✨</div>`).join('')+`</div><button id="closePanel">Закрыть</button>`; 
@@ -704,14 +858,15 @@
         if (player.inBattle) { addSys("Ты уже в бою!"); return; }
         let today = new Date().toDateString();
         if (lastDailyBossDate !== today) {
-            let bossList = ["🐉 Древний дракон", "👑 Король личей", "🌋 Повелитель магмы", "❄️ Ледяной титан"];
+            let bossList = ["🐉 Древний дракон", "👑 Король личей", "🌋 Повелитель магмы", "❄️ Ледяной титан", "💀 Жнец душ", "⚡ Громовой бог", "🌙 Лунный страж", "🔥 Феникс"];
             let randomBoss = bossList[Math.floor(Math.random() * bossList.length)];
             let baseHp = 600 + player.level * 40;
             let baseAtk = 80 + player.level * 4;
             dailyBoss = { name: randomBoss, hp: baseHp, atk: baseAtk, gold: 1500 + player.level * 50, xp: 600 + player.level * 20, glory: 100 + player.level * 5, drops: [] };
             lastDailyBossDate = today;
-            addSys(`⭐ Сегодняшний ежедневный босс: ${dailyBoss.name}!`);
+            addSys(`⭐ Сегодняшний ежедневный босс: ${dailyBoss.name}! (сила зависит от твоего уровня)`);
         }
+        if (!dailyBoss) { addSys("Ошибка: босс не создан"); return; }
         startBattle({ ...dailyBoss, drops: [] });
     }
     
@@ -719,12 +874,12 @@
         if(!player.class) return; 
         let items = WEAPONS[player.class]; 
         let panel=document.getElementById("dynamicPanel"); 
-        panel.innerHTML=`<strong>🏪 МАГАЗИН</strong><div class="select-list">`+items.map((w,i)=>`<div class="shop-item" data-idx="${i}">${w.name} +${w.dmg} - ${w.cost}💰</div>`).join('')+`</div><button id="upgradeWeaponBtn">⚡ Улучшить оружие (+${weaponUpgrade}/5) - 500💰</button><br><button id="closePanel">Закрыть</button>`; 
+        panel.innerHTML=`<strong>🏪 МАГАЗИН (${items.length} предметов)</strong><div class="select-list">`+items.map((w,i)=>`<div class="shop-item" data-idx="${i}">${w.name} +${w.dmg} ур. - ${w.cost}💰</div>`).join('')+`</div><button id="upgradeWeaponBtn">⚡ Улучшить оружие (+${weaponUpgrade}/5) - 500💰</button><br><button id="closePanel">Закрыть</button>`; 
         panel.classList.remove("hidden");
         document.querySelectorAll(".shop-item").forEach(el=>el.onclick=()=>{ let idx=parseInt(el.dataset.idx); let w=WEAPONS[player.class][idx]; if(w.cost===0) { addSys(`Стартовое оружие`); return; } if(player.gold>=w.cost){ player.gold-=w.cost; player.weapon={name:w.name,dmg:w.dmg}; weaponUpgrade=0; addSys(`✅ Куплено: ${w.name}!`); updateUI(); supabaseSavePlayer(); panel.classList.add("hidden");} else addSys(`Не хватает`); });
         document.getElementById("upgradeWeaponBtn").onclick=()=>{
             if(weaponUpgrade >= 5) addSys("❌ Оружие уже максимально улучшено!");
-            else if(player.gold >= 500) { player.gold -= 500; weaponUpgrade++; addSys(`⚡ Оружие улучшено до +${weaponUpgrade}!`); updateUI(); supabaseSavePlayer(); }
+            else if(player.gold >= 500) { player.gold -= 500; weaponUpgrade++; addSys(`⚡ Оружие улучшено до +${weaponUpgrade}! Урон +5 за уровень.`); updateUI(); supabaseSavePlayer(); }
             else addSys("❌ Не хватает 500💰");
         };
         document.getElementById("closePanel").onclick=()=>panel.classList.add("hidden"); 
@@ -732,7 +887,7 @@
     
     function gloryShop() {
         let panel = document.getElementById("dynamicPanel");
-        panel.innerHTML = `<strong>✨ Магазин славы (✨ ${Math.floor(player.glory)})</strong><div class="select-list">`+GLORY_SHOP.map((item,i)=>`<div class="shop-item" data-gidx="${i}">${item.name} - ${item.cost}✨</div>`).join('')+`</div><button id="closePanel">Закрыть</button>`;
+        panel.innerHTML = `<strong>✨ Магазин славы (Осколки: ${Math.floor(player.glory)})</strong><div class="select-list">`+GLORY_SHOP.map((item,i)=>`<div class="shop-item" data-gidx="${i}">${item.name} - ${item.cost}✨</div>`).join('')+`</div><button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
         document.querySelectorAll("[data-gidx]").forEach(el=>el.onclick=()=>{
             let idx = parseInt(el.dataset.gidx);
@@ -744,7 +899,7 @@
                 if (item.effect === "key") { player.keys[item.keyName] += item.value; addSys(`🔑 +${item.value} ${item.keyName}!`); }
                 if (item.effect === "material") { player.materials[item.materialName] += item.value; addSys(`📦 +${item.value} ${item.materialName}!`); }
                 updateUI(); supabaseSavePlayer(); panel.classList.add("hidden");
-            } else addSys(`❌ Не хватает славы!`);
+            } else addSys(`❌ Не хватает славы! Нужно ${item.cost}✨`);
         });
         document.getElementById("closePanel").onclick=()=>panel.classList.add("hidden");
     }
@@ -758,7 +913,7 @@
             keyExchange += `<div class="select-item" data-exchange="${i}">🔄 3x ${keyLevels[i]} → 1x ${keyLevels[i+1]}</div>`;
         }
         keyExchange += `</div>`;
-        let equipmentDisplay = `<hr><strong>🛡️ ЭКИПИРОВКА</strong><br>🪖 Шлем: ${equipment.helmet?.name||"нет"} (защита ${equipment.helmet?.armor||0})<br>🛡️ Броня: ${equipment.chest?.name||"нет"}<br>👢 Сапоги: ${equipment.boots?.name||"нет"}<br>💍 Кольцо: ${equipment.ring?.name||"нет"}<br>✨ Защита: ${getEquipmentBonus()}<br>`;
+        let equipmentDisplay = `<hr><strong>🛡️ ЭКИПИРОВКА</strong><br>🪖 Шлем: ${equipment.helmet?.name||"нет"} (защита ${equipment.helmet?.armor||0})<br>🛡️ Броня: ${equipment.chest?.name||"нет"} (защита ${equipment.chest?.armor||0})<br>👢 Сапоги: ${equipment.boots?.name||"нет"} (защита ${equipment.boots?.armor||0})<br>💍 Кольцо: ${equipment.ring?.name||"нет"} (защита ${equipment.ring?.armor||0})<br>✨ Общая защита: ${getEquipmentBonus()}<br>`;
         panel.innerHTML = `<strong>📦 ИНВЕНТАРЬ</strong><br>Оружие: ${player.weapon?.name||"нет"} (урон +${getWeaponDamage()}) +${weaponUpgrade}<br>${equipmentDisplay}<br>🔑 Ключи: ${Object.entries(player.keys).filter(k=>k[1]>0).map(k=>`${k[0]}:${k[1]}`).join(", ")||"нет"}<br>📦 Материалы: ${materialsForSale || "пусто"}${keyExchange}<button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
         document.querySelectorAll("[data-sell-material]").forEach(el=>{
@@ -794,7 +949,7 @@
         if(!player.class) return; 
         let crafts = getCraftsByClass(player.class);
         let panel = document.getElementById("dynamicPanel"); 
-        panel.innerHTML = `<strong>⚙️ КРАФТ</strong><div class="select-list">`+crafts.map((c,i)=>`<div class="craft-item" data-idx="${i}" data-weapon="${c.weaponName}" data-dmg="${c.dmg}" data-req='${JSON.stringify(c.items)}'><b>${c.name}</b> <span class="craft-damage">⚔️ +${c.dmg}</span><br><span class="craft-recipe">📦 ${c.items.map(it=>`${it.name} x${it.qty}`).join(', ')}</span></div>`).join('')+`</div><button id="closePanel">Закрыть</button>`; 
+        panel.innerHTML = `<strong>⚙️ КРАФТ (${crafts.length} рецептов)</strong><div class="select-list">`+crafts.map((c,i)=>`<div class="craft-item" data-idx="${i}" data-name="${c.name}" data-weapon="${c.weaponName}" data-dmg="${c.dmg}" data-req='${JSON.stringify(c.items)}'><b>${c.name}</b> <span class="craft-damage">⚔️ +${c.dmg} урона</span><br><span class="craft-recipe">📦 Требуется: ${c.items.map(it=>`${it.name} x${it.qty}`).join(', ')}</span></div>`).join('')+`</div><button id="closePanel">Закрыть</button>`; 
         panel.classList.remove("hidden");
         document.querySelectorAll(".craft-item").forEach(el=>el.onclick=()=>{ 
             let reqs = JSON.parse(el.dataset.req); 
@@ -808,6 +963,7 @@
             weaponUpgrade = 0;
             player.stats.totalCrafts++;
             achievements.crafts.current = player.stats.totalCrafts;
+            checkDailyWeeklyProgress("craft", 1);
             addSys(`✨ Вы скрафтили ${newName} (+${newDmg} урона)!`); 
             updateUI(); supabaseSavePlayer(); checkAchievements(); panel.classList.add("hidden"); 
         });
@@ -817,7 +973,7 @@
     function showAchievements() {
         let panel = document.getElementById("dynamicPanel");
         panel.innerHTML = `<strong>🏆 ДОСТИЖЕНИЯ</strong><div class="select-list">`+
-            Object.entries(achievements).map(([key, ach]) => `<div class="select-item">${ach.name}: ${ach.current}/${ach.target} ${ach.claimed ? "✅" : "❌"}<br><span>${ach.desc} → +${ach.reward.gold}💰 +${ach.reward.glory}✨</span></div>`).join('') +
+            Object.entries(achievements).map(([key, ach]) => `<div class="select-item">${ach.name}: ${ach.current}/${ach.target} ${ach.claimed ? "✅" : "❌"}<br><span style="font-size:0.6rem;">${ach.desc} → +${ach.reward.gold}💰 +${ach.reward.glory}✨</span></div>`).join('') +
             `</div><button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
         document.getElementById("closePanel").onclick=()=>panel.classList.add("hidden");
@@ -827,8 +983,8 @@
         let panel = document.getElementById("dynamicPanel");
         panel.innerHTML = `<strong>📅 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ</strong><div class="select-list">`+
             dailyQuests.map((q,i) => `<div class="select-item" data-daily="${i}">${q.name}: ${q.current}/${q.target} ${q.claimed ? "✅" : "❌"} → +${q.reward.gold}💰 +${q.reward.glory}✨</div>`).join('') +
-            `</div><hr><strong>📆 ЕЖЕНЕДЕЛЬНЫЕ</strong><div class="select-list">`+
-            weeklyQuests.map((q,i) => `<div class="select-item" data-weekly="${i}">${q.name}: ${q.current}/${q.target} ${q.claimed ? "✅" : "❌"}</div>`).join('') +
+            `</div><hr><strong>📆 ЕЖЕНЕДЕЛЬНЫЕ ЗАДАНИЯ</strong><div class="select-list">`+
+            weeklyQuests.map((q,i) => `<div class="select-item" data-weekly="${i}">${q.name}: ${q.current}/${q.target} ${q.claimed ? "✅" : "❌"} → +${q.reward.gold}💰 +${q.reward.glory}✨</div>`).join('') +
             `</div><button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
         document.querySelectorAll("[data-daily]").forEach(el=>el.onclick=()=>{
@@ -839,7 +995,7 @@
                 player.glory += dailyQuests[i].reward.glory;
                 addSys(`📅 Награда за "${dailyQuests[i].name}" получена! +${dailyQuests[i].reward.gold}💰 +${dailyQuests[i].reward.glory}✨`);
                 updateUI(); supabaseSavePlayer(); panel.classList.add("hidden");
-            } else addSys(`❌ Задание ещё не выполнено!`);
+            } else addSys(`❌ Задание ещё не выполнено или уже получено!`);
         });
         document.querySelectorAll("[data-weekly]").forEach(el=>el.onclick=()=>{
             let i = parseInt(el.dataset.weekly);
@@ -847,20 +1003,20 @@
                 weeklyQuests[i].claimed = true;
                 player.gold += weeklyQuests[i].reward.gold;
                 player.glory += weeklyQuests[i].reward.glory;
-                addSys(`📆 Награда за "${weeklyQuests[i].name}" получена!`);
+                addSys(`📆 Награда за "${weeklyQuests[i].name}" получена! +${weeklyQuests[i].reward.gold}💰 +${weeklyQuests[i].reward.glory}✨`);
                 updateUI(); supabaseSavePlayer(); panel.classList.add("hidden");
-            } else addSys(`❌ Задание ещё не выполнено!`);
+            } else addSys(`❌ Задание ещё не выполнено или уже получено!`);
         });
         document.getElementById("closePanel").onclick=()=>panel.classList.add("hidden");
     }
     
     function showTalents() {
         let panel = document.getElementById("dynamicPanel");
-        panel.innerHTML = `<strong>⭐ ТАЛАНТЫ (⭐${talents.availablePoints})</strong>
+        panel.innerHTML = `<strong>⭐ ТАЛАНТЫ (очков: ${talents.availablePoints})</strong>
             <div class="select-list">
-                <div class="select-item" data-talent="physical">💪 Сила: ур.${talents.physical.level}/10 (+${talents.physical.bonus}% урона)</div>
-                <div class="select-item" data-talent="crit">🎯 Крит: ур.${talents.crit.level}/10 (+${talents.crit.bonus}% крита)</div>
-                <div class="select-item" data-talent="health">❤️ Живучесть: ур.${talents.health.level}/10 (+${talents.health.bonus}% HP)</div>
+                <div class="select-item" data-talent="physical">💪 Физическая сила: ур.${talents.physical.level}/10 (+${talents.physical.bonus}% урона) - 1 очко</div>
+                <div class="select-item" data-talent="crit">🎯 Смертельный удар: ур.${talents.crit.level}/10 (+${talents.crit.bonus}% крит шанса) - 1 очко</div>
+                <div class="select-item" data-talent="health">❤️ Живучесть: ур.${talents.health.level}/10 (+${talents.health.bonus}% HP) - 1 очко</div>
             </div>
             <button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
@@ -869,14 +1025,14 @@
                 let talent = el.dataset.talent;
                 if(talents.availablePoints <= 0) { addSys("❌ Нет очков талантов!"); return; }
                 let t = talents[talent];
-                if(t.level >= t.max) { addSys("❌ Максимум!"); return; }
+                if(t.level >= t.max) { addSys("❌ Максимальный уровень!"); return; }
                 t.level++;
                 t.bonus = talent === "physical" ? t.level * 2 : (talent === "crit" ? t.level * 1.5 : t.level * 3);
                 talents.availablePoints--;
-                addSys(`⭐ Талант улучшен!`);
+                addSys(`⭐ Талант улучшен! ${el.innerText.split("-")[0]}`);
                 if(talent === "health") {
-                    player.maxHp = Math.floor((player.class === "warrior" ? 260 : player.class === "mage" ? 180 : 210) + (player.level-1)*20);
-                    player.maxHp = Math.floor(player.maxHp * (1 + talents.health.bonus/100));
+                    let baseHp = player.class === "warrior" ? 260 : (player.class === "mage" ? 180 : 210);
+                    player.maxHp = Math.floor((baseHp + (player.level-1)*20) * (1 + talents.health.bonus/100));
                     player.hp = player.maxHp;
                 }
                 updateUI(); supabaseSavePlayer(); showTalents();
@@ -894,12 +1050,12 @@
         else{player.maxHp=210;player.hp=210;player.maxMp=60;player.mp=60;}
         player.maxHp = Math.floor(player.maxHp * (1 + talents.health.bonus/100));
         player.hp = player.maxHp;
-        addSys(`🎭 Класс: ${cn.toUpperCase()}. Оружие: ${player.weapon.name} (+${player.weapon.dmg})`); 
+        addSys(`🎭 Класс: ${cn.toUpperCase()}. Оружие: ${player.weapon.name} (+${player.weapon.dmg} урона)`); 
         updateUI(); supabaseSavePlayer(); 
     }
     
     function statsCmd(){ 
-        addSys(`Ур.${player.level} ❤️${Math.floor(player.hp)}/${player.maxHp} 🪙${Math.floor(player.gold)} ✨${Math.floor(player.glory)} | Таланты: 💪+${talents.physical.bonus}% 🎯+${talents.crit.bonus}% | Защита: ${getEquipmentBonus()}`); 
+        addSys(`Ур.${player.level} ❤️${Math.floor(player.hp)}/${player.maxHp} 💙${Math.floor(player.mp)}/${player.maxMp} ⚔️Урон ${Math.floor(getWeaponDamage() + player.level * 1.2)} 🪙${Math.floor(player.gold)} ✨${Math.floor(player.glory)} славы | Таланты: 💪+${talents.physical.bonus}% 🎯+${talents.crit.bonus}% ❤️+${talents.health.bonus}% | Защита: ${getEquipmentBonus()}`); 
     }
     
     function secretBoss() { addSys(`🌌 Ты прошептал древнее заклинание...`); startBattle({ name: "🌀 Хранитель Бездны", hp: 40000+player.level*150, atk: 2000+player.level*8, gold: 80000, xp: 40000, glory: 5000, drops: [] }); }
@@ -907,26 +1063,30 @@
     function activatePromo(code) {
         let found = PROMO_CODES.find(p => p.code.toLowerCase() === code.toLowerCase());
         if (!found) { addSys(`❌ Промокод "${code}" не найден!`); return false; }
-        if (player.usedPromoCodes.includes(found.code)) { addSys(`⚠️ Промокод уже активирован!`); return false; }
-        if (found.money) player.gold += found.money;
-        if (found.exp) player.xp += found.exp;
-        if (found.glory) player.glory += found.glory;
-        if (found.keyBonus) player.keys[found.keyBonus] += found.keyQty;
-        if (found.materialBonus) player.materials[found.materialBonus] += found.materialQty;
-        addSys(`🎉 Промокод "${found.name}" активирован!`);
+        if (player.usedPromoCodes.includes(found.code)) { addSys(`⚠️ Промокод "${found.name}" уже был активирован!`); return false; }
+        let rewardsMsg = [];
+        if (found.money) { player.gold += found.money; rewardsMsg.push(`💰 ${found.money} золота`); }
+        if (found.exp) { player.xp += found.exp; rewardsMsg.push(`✨ ${found.exp} опыта`); }
+        if (found.glory) { player.glory += found.glory; rewardsMsg.push(`✨ ${found.glory} славы`); }
+        if (found.keyBonus && found.keyQty) { player.keys[found.keyBonus] += found.keyQty; rewardsMsg.push(`🔑 ${found.keyQty}x ${found.keyBonus}`); }
+        if (found.materialBonus && found.materialQty) { player.materials[found.materialBonus] += found.materialQty; rewardsMsg.push(`📦 ${found.materialQty}x ${found.materialBonus}`); }
+        addSys(`🎉 Промокод "${found.name}" активирован! +${rewardsMsg.join(", ")}`);
         player.usedPromoCodes.push(found.code);
         let need = 100 + player.level * 12;
         while (player.xp >= need) { player.level++; player.xp -= need; player.maxHp += 20; player.hp = player.maxHp; talents.availablePoints++; addSys(`✨ УРОВЕНЬ ${player.level}! +1 очко талантов`); need = 100 + player.level * 12; }
+        if (player.hp > player.maxHp) player.hp = player.maxHp;
+        if (player.mp > player.maxMp) player.mp = player.maxMp;
         updateUI(); supabaseSavePlayer(); return true;
     }
     
     function showPromoUI() {
         let panel = document.getElementById("dynamicPanel");
-        panel.innerHTML = `<strong>🎁 Введите промокод</strong><br><input type="text" id="promoInputField" placeholder="Промокод..." style="width:100%; margin: 10px 0;"><button id="submitPromoBtn">Активировать</button><br><br><button id="closePanel">Закрыть</button>`;
+        panel.innerHTML = `<strong>🎁 Введите промокод</strong><br><input type="text" id="promoInputField" placeholder="Введите промокод..." style="width:100%; margin: 10px 0;"><button id="submitPromoBtn">Активировать</button><br><br><button id="closePanel">Закрыть</button>`;
         panel.classList.remove("hidden");
         document.getElementById("submitPromoBtn").onclick = () => {
             let val = document.getElementById("promoInputField").value.trim();
             if (val) activatePromo(val);
+            else addSys("❌ Введите промокод.");
             panel.classList.add("hidden");
         };
         document.getElementById("closePanel").onclick = () => panel.classList.add("hidden");
@@ -940,13 +1100,17 @@
     async function processCommand(cmd) { 
         let c = cmd.trim().toLowerCase();
         
+        if (c.startsWith("/админ")) {
+            await adminCommand(cmd);
+            return;
+        }
+        
         if (c.startsWith("/передать")) {
             const parts = cmd.split(" ");
             if (parts.length >= 3) {
                 const result = await supabaseTransferGold(parts[1], parseInt(parts[2]));
                 addSys(result);
                 updateUI();
-                supabaseSavePlayer();
             } else {
                 addSys("❌ Использование: /передать Имя 100");
             }
@@ -958,25 +1122,18 @@
             return;
         }
         if (c === "/синхронизация") {
-            await fullReloadFromDatabase();
+            await fullSync();
             return;
         }
         
         if (c === "очистить") { clearChat(); return; }
-        if (c.startsWith("инфо")) {
-            let arg = cmd.substring(4).trim();
-            if (arg === "воин") addSys("⚔️ Воин: высокое HP");
-            else addSys("❌ Инфо не найдено");
-            return;
-        }
-        let foundPromo = PROMO_CODES.find(p => p.code.toLowerCase() === c);
-        if (foundPromo) { activatePromo(foundPromo.code); return; }
-        if(c === "статы") statsCmd();
-        else if(c === "помощь") addSys(`Команды: статы, очистить, /передать Имя 100, /топ, /синхронизация, открой врата`);
-        else if(c === "открой врата") secretBoss();
+        if (c === "статы") statsCmd();
+        else if (c === "помощь") addSys(`Команды: статы, очистить, /передать Имя 100, /топ, /синхронизация, /админ хп/лвл/слава/голд/урон/ключ/меч/материал/все, открой врата`);
+        else if (c === "открой врата") secretBoss();
         else addSys(`❓ Неизвестно. Введите "помощь".`); 
     }
     
+    // ==== ИНТЕРВАЛЫ ====
     setInterval(() => {
         if(player.inBattle && player.currentEnemy && player.currentEnemy.hp > 0 && player.hp > 0) {
             applyEffects(false, false);
@@ -988,7 +1145,7 @@
     setInterval(()=>{ if(player.inBattle && player.currentEnemy && player.currentEnemy.hp>0 && player.hp>0) enemyAttack(); }, 4000);
     setInterval(() => { if (currentPlayerName) supabaseSavePlayer(); }, 30000);
     
-    // Кнопки
+    // ==== КНОПКИ ====
     document.getElementById("questBtn").onclick=()=>{if(player.class) showQuests(); else addSys("Выберите класс!");};
     document.getElementById("bossListBtn").onclick=()=>{if(player.class) showBosses(); else addSys("Выберите класс!");};
     document.getElementById("dailyBossBtn").onclick = dailyBossFight;
@@ -1008,34 +1165,31 @@
     document.getElementById("themeBtn").onclick=toggleTheme;
     document.getElementById("sendBtn").onclick=()=>{ let inp=document.getElementById("cmdInput"); processCommand(inp.value); inp.value=""; };
     
-    // Логин
+    // ==== ЛОГИН ====
     document.getElementById("loginBtn").onclick = async () => {
         const name = document.getElementById("loginName").value.trim();
         if (!name) { alert("Введи имя!"); return; }
         
         localStorage.setItem("savedPlayerName", name);
         
-        // Показываем загрузку
-        document.getElementById("loginBtn").innerText = "Загрузка...";
-        document.getElementById("loginBtn").disabled = true;
+        const btn = document.getElementById("loginBtn");
+        btn.innerText = "Загрузка...";
+        btn.disabled = true;
         
         let playerData = await supabaseLoadPlayer(name);
-        
         if (!playerData) {
             playerData = await supabaseCreatePlayer(name);
             addSys(`🌀 Новый игрок: ${name}`);
         } else {
             addSys(`🌀 С возвращением, ${name}`);
+            player.gold = playerData.gold;
+            player.glory = playerData.glory;
+            player.level = playerData.level;
+            player.hp = playerData.hp;
+            player.maxHp = playerData.max_hp;
         }
         
         currentPlayerName = name;
-        
-        // Загружаем данные в игрока
-        player.gold = playerData.gold;
-        player.glory = playerData.glory;
-        player.level = playerData.level;
-        player.hp = playerData.hp;
-        player.maxHp = playerData.max_hp;
         
         document.getElementById("loginScreen").style.display = "none";
         document.getElementById("gameContainer").style.display = "block";
@@ -1049,10 +1203,8 @@
         }
         
         updateUI();
-        
-        // Сброс кнопки
-        document.getElementById("loginBtn").innerText = "Войти";
-        document.getElementById("loginBtn").disabled = false;
+        btn.innerText = "Войти";
+        btn.disabled = false;
     };
     
     const savedName = localStorage.getItem("savedPlayerName");
