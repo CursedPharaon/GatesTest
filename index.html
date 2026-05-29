@@ -1,459 +1,229 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Тысячи врат: Текстовая RPG</title>
+    <title>ПВП Тест</title>
     <style>
-        * { box-sizing: border-box; }
-        body { background: #0a0c16; font-family: system-ui, monospace; margin: 0; padding: 8px; color: #eef4ff; }
-        .game-container { max-width: 700px; margin: 0 auto; background: #03060e; border-radius: 28px; overflow: hidden; }
-        .stats-panel { background: #010a17; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; font-size: 0.7rem; }
-        .chat { max-height: 35vh; overflow-y: auto; padding: 10px; background: #051020; font-size: 0.8rem; }
-        .msg { background: #0f1a2c; padding: 6px 10px; border-radius: 18px; margin-bottom: 6px; border-left: 3px solid #4c7a9a; }
-        .msg.system { border-left-color: #d6b356; }
-        .buttons-panel { background: #030c17; padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .buttons-panel button { background: #1f3a52; border: none; color: white; padding: 10px; border-radius: 40px; cursor: pointer; }
-        .input-area { display: flex; gap: 8px; padding: 10px; background: #030c17; }
-        input { flex: 1; background: #0f1b2f; border: none; padding: 12px 16px; border-radius: 40px; color: white; }
-        button { background: #2c4f6e; border: none; color: white; padding: 8px 16px; border-radius: 40px; cursor: pointer; }
-        .hidden { display: none; }
-        .login-screen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #0a0c16; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000; }
-        .login-screen input { width: 80%; margin: 10px; padding: 12px; border-radius: 40px; background: #1a2a3a; color: white; border: none; }
-        .login-screen button { width: 80%; background: #4c7a9a; font-size: 18px; padding: 12px; border-radius: 40px; }
-        .enemy-panel { background: #0d1a2a; padding: 8px; margin: 6px 10px; border-radius: 20px; display: flex; justify-content: space-between; }
-        .sub-panel { background: #0a1424; margin: 5px 10px; border-radius: 20px; padding: 8px; max-height: 250px; overflow-y: auto; }
-        .select-item { background: #162336; padding: 6px 10px; border-radius: 40px; cursor: pointer; margin: 2px; }
+        body { font-family: system-ui; padding: 20px; background: #0a0c16; color: white; }
+        input, button { padding: 12px; margin: 5px; border-radius: 30px; border: none; }
+        button { background: #4c7a9a; color: white; }
+        .msg { background: #1a2a3a; padding: 10px; margin: 5px; border-radius: 20px; }
+        #log { height: 300px; overflow-y: auto; background: #051020; padding: 10px; border-radius: 20px; }
     </style>
 </head>
 <body>
-
-<div class="login-screen" id="loginScreen">
-    <h2>🌀 Тысячи врат</h2>
-    <input type="text" id="loginName" placeholder="Введи имя" autocomplete="off">
+    <h2>🌀 Тысячи врат - ПВП тест</h2>
+    <input type="text" id="playerName" placeholder="Твой ник">
     <button id="loginBtn">Войти</button>
-    <div id="loginStatus" style="margin-top: 10px; font-size: 12px;"></div>
-</div>
+    
+    <div id="pvpArea" style="display:none;">
+        <input type="text" id="targetName" placeholder="Кого вызвать?">
+        <input type="number" id="betAmount" placeholder="Ставка">
+        <button id="callBtn">📢 Вызвать на ПВП</button>
+        <button id="acceptBtn">✅ Подтвердить бой</button>
+        <button id="attackBtn">⚔️ Атаковать</button>
+        <div id="log"></div>
+    </div>
 
-<div class="game-container" id="gameContainer" style="display: none;">
-    <div class="stats-panel">
-        <div>⚔️ <span id="className">???</span> | Ур.<span id="lvl">1</span></div>
-        <div>❤️ <span id="hp">200</span>/<span id="maxHp">200</span></div>
-        <div>🪙 <span id="gold">800</span></div>
-        <div>✨ <span id="glory">0</span></div>
-    </div>
-    <div class="enemy-panel" id="enemyPanel" style="display: none;">
-        <span>👾 <span id="enemyName"></span></span>
-        <span>❤️ <span id="enemyHp"></span></span>
-    </div>
-    <div class="chat" id="chatArea">
-        <div class="msg system">🌀 Тысячи врат</div>
-        <div class="msg system">⚔️ ПВП: /пвп вызвать Имя 100</div>
-        <div class="msg system">💰 /передать Имя 100</div>
-    </div>
-    <div id="dynamicPanel" class="sub-panel hidden"></div>
-    <div class="buttons-panel">
-        <button id="attackBtn">⚔️ АТАКА</button>
-        <button id="healBtn">💚 ЛЕЧИТЬ</button>
-        <button id="shopBtn">🏪 МАГАЗИН</button>
-        <button id="inventoryBtn">📦 ИНВЕНТАРЬ</button>
-    </div>
-    <div class="input-area">
-        <input type="text" id="cmdInput" placeholder="/помощь" autocomplete="off">
-        <button id="sendBtn">➤</button>
-    </div>
-</div>
-
-<script>
-    // ========== SUPABASE НАСТРОЙКИ ==========
-    const SUPABASE_URL = "https://tmjqafqecjpizawdruzq.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtanFhZnFlY2pwaXphd2RydXpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTk2OTYsImV4cCI6MjA5NTQ3NTY5Nn0.8K7i5QEbjYWSvqw78P8RSR_abYM8uCRZbvC9Hp12bac";
-    
-    let currentPlayerName = null;
-    let currentPvpBattle = null;
-    
-    function addMsg(msg, type = "system") { 
-        let chat = document.getElementById("chatArea"); 
-        let d = document.createElement("div"); 
-        d.className = `msg ${type}`; 
-        d.innerHTML = msg; 
-        chat.appendChild(d); 
-        chat.scrollTop = chat.scrollHeight; 
-    }
-    
-    // ========== SUPABASE ФУНКЦИИ ==========
-    async function supabaseRequest(endpoint, method = 'GET', body = null) {
-        const options = {
-            method,
-            headers: { 
-                'apikey': SUPABASE_KEY, 
-                'Authorization': `Bearer ${SUPABASE_KEY}`, 
-                'Content-Type': 'application/json' 
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = "https://tmjqafqecjpizawdruzq.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtanFhZnFlY2pwaXphd2RydXpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTk2OTYsImV4cCI6MjA5NTQ3NTY5Nn0.8K7i5QEbjYWSvqw78P8RSR_abYM8uCRZbvC9Hp12bac";
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let currentPlayer = null;
+        let currentBattle = null;
+        
+        function addLog(msg) {
+            const log = document.getElementById('log');
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerText = msg;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        document.getElementById('loginBtn').onclick = async () => {
+            const name = document.getElementById('playerName').value.trim();
+            if (!name) return;
+            currentPlayer = name;
+            
+            // Создаём или получаем игрока
+            const { data: existing } = await supabase
+                .from('players')
+                .select('*')
+                .eq('username', name);
+            
+            if (!existing || existing.length === 0) {
+                await supabase.from('players').insert({
+                    username: name,
+                    gold: 1000,
+                    hp: 200,
+                    max_hp: 200,
+                    weapon_dmg: 20
+                });
             }
+            
+            document.getElementById('pvpArea').style.display = 'block';
+            addLog(`✅ Вошёл как ${name}`);
+            
+            // Подписка на ПВП события (Realtime)
+            supabase
+                .channel('pvp')
+                .on('postgres_changes', { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'pvp_battles',
+                    filter: `opponent=eq.${name}`
+                }, (payload) => {
+                    const battle = payload.new;
+                    if (battle.status === 'pending') {
+                        addLog(`📢 ВЫЗОВ от ${battle.challenger}! Ставка: ${battle.challenger_bet}💰`);
+                        addLog(`👉 Нажми "Подтвердить бой" чтобы принять`);
+                        currentBattle = battle;
+                    }
+                })
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'pvp_battles',
+                    filter: `or=(challenger.eq.${name},opponent.eq.${name})`
+                }, async (payload) => {
+                    const battle = payload.new;
+                    if (battle.status === 'active') {
+                        addLog(`⚔️ БОЙ НАЧАЛСЯ! ${battle.challenger} vs ${battle.opponent} | Ход: ${battle.turn}`);
+                        currentBattle = battle;
+                    }
+                    if (battle.status === 'finished') {
+                        addLog(`🏆 ПОБЕДИТЕЛЬ: ${battle.winner}! Ставка ${battle.challenger_bet + battle.opponent_bet}💰 уходит победителю`);
+                        currentBattle = null;
+                        // Обновляем золото победителя
+                        if (battle.winner === currentPlayer) {
+                            const { data: p } = await supabase.from('players').select('gold').eq('username', currentPlayer);
+                            if (p && p[0]) {
+                                await supabase.from('players').update({ gold: p[0].gold + battle.challenger_bet + battle.opponent_bet }).eq('username', currentPlayer);
+                            }
+                        }
+                    }
+                    if (battle.status === 'cancelled') {
+                        addLog(`❌ Бой отменён`);
+                        currentBattle = null;
+                    }
+                })
+                .subscribe();
         };
-        if (body) options.body = JSON.stringify(body);
         
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, options);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-    }
-    
-    async function loadPlayer(username) {
-        const data = await supabaseRequest(`players?username=eq.${encodeURIComponent(username)}`);
-        return data?.[0] || null;
-    }
-    
-    async function savePlayer() {
-        if (!currentPlayerName) return;
-        await supabaseRequest(`players?username=eq.${currentPlayerName}`, 'PATCH', {
-            gold: player.gold,
-            glory: player.glory,
-            level: player.level,
-            hp: player.hp,
-            max_hp: player.maxHp,
-            weapon_name: player.weapon?.name,
-            weapon_dmg: player.weapon?.dmg,
-            player_class: player.class
-        });
-    }
-    
-    async function createPlayer(username) {
-        const newPlayer = { 
-            username, gold: 800, glory: 0, level: 1, 
-            hp: 200, max_hp: 200, weapon_name: "Ржавый меч", 
-            weapon_dmg: 12, player_class: null 
+        // Вызов на ПВП
+        document.getElementById('callBtn').onclick = async () => {
+            const target = document.getElementById('targetName').value.trim();
+            const bet = parseInt(document.getElementById('betAmount').value);
+            if (!target || !bet) { addLog("❌ Укажи имя и ставку"); return; }
+            
+            // Проверяем золото
+            const { data: playerData } = await supabase.from('players').select('gold').eq('username', currentPlayer);
+            if (!playerData || playerData[0].gold < bet) { addLog("❌ Не хватает золота"); return; }
+            
+            // Проверяем, есть ли уже активный бой
+            const { data: existingBattle } = await supabase
+                .from('pvp_battles')
+                .select('*')
+                .or(`challenger.eq.${currentPlayer},opponent.eq.${currentPlayer}`)
+                .in('status', ['pending', 'active']);
+            
+            if (existingBattle && existingBattle.length > 0) { addLog("❌ У тебя уже есть активный бой/вызов"); return; }
+            
+            // Создаём вызов
+            await supabase.from('pvp_battles').insert({
+                challenger: currentPlayer,
+                opponent: target,
+                challenger_bet: bet,
+                opponent_bet: 0,
+                status: 'pending',
+                challenger_hp: 200,
+                opponent_hp: 200,
+                turn: currentPlayer
+            });
+            addLog(`📢 Вызов отправлен ${target} на ${bet}💰`);
         };
-        await supabaseRequest('players', 'POST', newPlayer);
-        return newPlayer;
-    }
-    
-    async function transferGold(toName, amount) {
-        if (amount <= 0) return "❌ Сумма > 0";
-        if (player.gold < amount) return "❌ Не хватает голды";
-        if (toName === currentPlayerName) return "❌ Нельзя себе";
         
-        const target = await loadPlayer(toName);
-        if (!target) return "❌ Игрок не найден";
-        
-        player.gold -= amount;
-        await savePlayer();
-        await supabaseRequest(`players?username=eq.${toName}`, 'PATCH', { gold: target.gold + amount });
-        return `💰 Передано ${amount} голды ${toName}!`;
-    }
-    
-    // ========== ПВП ==========
-    async function pvpUpdate() {
-        if (!currentPlayerName) return;
-        
-        try {
-            const active = await supabaseRequest(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&limit=1`);
-            if (active && active.length > 0) {
-                currentPvpBattle = active[0];
-                addMsg(`⚔️ ПВП: ${currentPvpBattle.challenger} vs ${currentPvpBattle.opponent} | Ход: ${currentPvpBattle.turn}`);
+        // Подтверждение боя
+        document.getElementById('acceptBtn').onclick = async () => {
+            if (!currentBattle || currentBattle.status !== 'pending') { addLog("❌ Нет активного вызова"); return; }
+            if (currentBattle.opponent !== currentPlayer) { addLog("❌ Это не тебя вызывали"); return; }
+            
+            // Проверяем золото
+            const { data: playerData } = await supabase.from('players').select('gold').eq('username', currentPlayer);
+            if (!playerData || playerData[0].gold < currentBattle.challenger_bet) { 
+                addLog(`❌ Не хватает ${currentBattle.challenger_bet}💰 для ставки`); 
                 return;
             }
             
-            const pending = await supabaseRequest(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-            if (pending && pending.length > 0) {
-                addMsg(`📢 Вас вызвал ${pending[0].challenger} на ${pending[0].challenger_bet}💰`);
-                addMsg(`✅ /пвп подтвердить или /пвп отклонить`);
-            }
+            // Списываем золото
+            await supabase.from('players').update({ gold: playerData[0].gold - currentBattle.challenger_bet }).eq('username', currentPlayer);
             
-            if ((!active || active.length === 0) && currentPvpBattle) currentPvpBattle = null;
-        } catch(e) { console.log("pvpUpdate error:", e); }
-    }
-    
-    async function pvpCommand(cmd) {
-        const parts = cmd.split(" ");
-        const action = parts[1]?.toLowerCase();
+            // Запускаем бой
+            await supabase
+                .from('pvp_battles')
+                .update({ 
+                    opponent_bet: currentBattle.challenger_bet, 
+                    status: 'active',
+                    turn: currentBattle.challenger
+                })
+                .eq('id', currentBattle.id);
+            
+            addLog(`✅ Бой принят! Жди хода...`);
+        };
         
-        if (action === "вызвать" && parts[2] && parts[3]) {
-            const opponent = parts[2];
-            const bet = parseInt(parts[3]);
-            if (isNaN(bet) || bet <= 0) { addMsg("❌ Ставка > 0"); return; }
-            if (player.gold < bet) { addMsg("❌ Не хватает голды"); return; }
-            if (opponent === currentPlayerName) { addMsg("❌ Нельзя себя"); return; }
+        // Атака
+        document.getElementById('attackBtn').onclick = async () => {
+            if (!currentBattle || currentBattle.status !== 'active') { addLog("❌ Нет активного боя"); return; }
+            if (currentBattle.turn !== currentPlayer) { addLog("❌ Сейчас не твой ход"); return; }
             
-            const target = await loadPlayer(opponent);
-            if (!target) { addMsg("❌ Игрок не найден"); return; }
+            // Получаем урон игрока
+            const { data: playerData } = await supabase.from('players').select('weapon_dmg').eq('username', currentPlayer);
+            const dmg = (playerData[0]?.weapon_dmg || 20) + Math.floor(Math.random() * 15);
             
-            await supabaseRequest('pvp_battles', 'POST', {
-                challenger: currentPlayerName,
-                opponent: opponent,
-                challenger_bet: bet,
-                status: 'pending',
-                challenger_hp: player.hp,
-                opponent_hp: 200,
-                turn: currentPlayerName
-            });
-            addMsg(`📢 Вызов отправлен ${opponent} на ${bet}💰`);
-            return;
-        }
-        
-        if (action === "подтвердить") {
-            const pending = await supabaseRequest(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-            if (!pending || pending.length === 0) { addMsg("❌ Нет вызова"); return; }
-            const call = pending[0];
-            if (player.gold < call.challenger_bet) { addMsg(`❌ Нужно ${call.challenger_bet}💰`); return; }
+            const isChallenger = currentBattle.challenger === currentPlayer;
+            let newHp;
             
-            player.gold -= call.challenger_bet;
-            await savePlayer();
-            
-            await supabaseRequest(`pvp_battles?id=eq.${call.id}`, 'PATCH', {
-                opponent_bet: call.challenger_bet,
-                status: 'active',
-                turn: call.challenger
-            });
-            addMsg(`✅ Бой начался! Ставка ${call.challenger_bet}💰`);
-            await pvpUpdate();
-            return;
-        }
-        
-        if (action === "отклонить") {
-            const pending = await supabaseRequest(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-            if (!pending || pending.length === 0) { addMsg("❌ Нет вызова"); return; }
-            await supabaseRequest(`pvp_battles?id=eq.${pending[0].id}`, 'PATCH', { status: 'cancelled' });
-            addMsg(`❌ Вы отклонили вызов`);
-            await pvpUpdate();
-            return;
-        }
-        
-        if (action === "статус") {
-            if (currentPvpBattle) {
-                addMsg(`⚔️ Бой: ${currentPvpBattle.challenger} vs ${currentPvpBattle.opponent}`);
+            if (isChallenger) {
+                newHp = Math.max(0, (currentBattle.opponent_hp || 200) - dmg);
+                await supabase
+                    .from('pvp_battles')
+                    .update({ opponent_hp: newHp, turn: currentBattle.opponent })
+                    .eq('id', currentBattle.id);
             } else {
-                const pending = await supabaseRequest(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-                if (pending && pending.length > 0) addMsg(`📢 Есть вызов от ${pending[0].challenger}`);
-                else addMsg(`❌ Нет активных боёв`);
+                newHp = Math.max(0, (currentBattle.challenger_hp || 200) - dmg);
+                await supabase
+                    .from('pvp_battles')
+                    .update({ challenger_hp: newHp, turn: currentBattle.challenger })
+                    .eq('id', currentBattle.id);
             }
-            return;
-        }
-        
-        addMsg("❌ /пвп вызвать Имя 100 | /пвп подтвердить | /пвп отклонить | /пвп статус");
-    }
-    
-    async function pvpAttack() {
-        if (!currentPvpBattle) { addMsg("❌ Нет ПВП боя"); return; }
-        if (currentPvpBattle.turn !== currentPlayerName) { addMsg("❌ Не твой ход"); return; }
-        
-        const dmg = (player.weapon?.dmg || 12) + Math.floor(Math.random() * 10);
-        const isChallenger = currentPvpBattle.challenger === currentPlayerName;
-        
-        if (isChallenger) {
-            const newHp = Math.max(0, (currentPvpBattle.opponent_hp || 200) - dmg);
-            await supabaseRequest(`pvp_battles?id=eq.${currentPvpBattle.id}`, 'PATCH', {
-                opponent_hp: newHp,
-                turn: currentPvpBattle.opponent
-            });
-            addMsg(`⚔️ ${currentPlayerName} нанёс ${dmg} урона ${currentPvpBattle.opponent}!`);
+            
+            addLog(`⚔️ ${currentPlayer} нанёс ${dmg} урона!`);
+            
             if (newHp <= 0) {
-                await supabaseRequest(`pvp_battles?id=eq.${currentPvpBattle.id}`, 'PATCH', { status: 'finished', winner: currentPlayerName });
-                const totalBet = currentPvpBattle.challenger_bet + currentPvpBattle.opponent_bet;
-                player.gold += totalBet;
-                await savePlayer();
-                addMsg(`🏆 Победа! +${totalBet}💰`);
-                currentPvpBattle = null;
+                const winner = currentPlayer;
+                const totalBet = currentBattle.challenger_bet + currentBattle.opponent_bet;
+                await supabase
+                    .from('pvp_battles')
+                    .update({ status: 'finished', winner })
+                    .eq('id', currentBattle.id);
+                
+                // Добавляем золото победителю
+                const { data: winnerData } = await supabase.from('players').select('gold').eq('username', winner);
+                if (winnerData) {
+                    await supabase.from('players').update({ gold: winnerData[0].gold + totalBet }).eq('username', winner);
+                }
+                addLog(`🏆 ПОБЕДА! +${totalBet}💰`);
+                currentBattle = null;
             }
-        } else {
-            const newHp = Math.max(0, (currentPvpBattle.challenger_hp || 200) - dmg);
-            await supabaseRequest(`pvp_battles?id=eq.${currentPvpBattle.id}`, 'PATCH', {
-                challenger_hp: newHp,
-                turn: currentPvpBattle.challenger
-            });
-            addMsg(`⚔️ ${currentPlayerName} нанёс ${dmg} урона ${currentPvpBattle.challenger}!`);
-            if (newHp <= 0) {
-                await supabaseRequest(`pvp_battles?id=eq.${currentPvpBattle.id}`, 'PATCH', { status: 'finished', winner: currentPlayerName });
-                const totalBet = currentPvpBattle.challenger_bet + currentPvpBattle.opponent_bet;
-                player.gold += totalBet;
-                await savePlayer();
-                addMsg(`🏆 Победа! +${totalBet}💰`);
-                currentPvpBattle = null;
-            }
-        }
-        await pvpUpdate();
-    }
-    
-    // ========== ИГРОВЫЕ ФУНКЦИИ ==========
-    let player = {
-        class: null, level: 1, gold: 800, glory: 0, hp: 200, maxHp: 200,
-        weapon: { name: "Ржавый меч", dmg: 12 }, inBattle: false, currentEnemy: null
-    };
-    
-    function updateUI() {
-        document.getElementById("className").innerText = player.class || "???";
-        document.getElementById("lvl").innerText = player.level;
-        document.getElementById("hp").innerText = Math.floor(player.hp);
-        document.getElementById("maxHp").innerText = player.maxHp;
-        document.getElementById("gold").innerText = Math.floor(player.gold);
-        document.getElementById("glory").innerText = Math.floor(player.glory);
-        if (player.inBattle && player.currentEnemy) {
-            document.getElementById("enemyPanel").style.display = "flex";
-            document.getElementById("enemyName").innerText = player.currentEnemy.name;
-            document.getElementById("enemyHp").innerText = Math.max(0, Math.floor(player.currentEnemy.hp));
-        } else {
-            document.getElementById("enemyPanel").style.display = "none";
-        }
-    }
-    
-    async function attack() {
-        if (currentPvpBattle) {
-            await pvpAttack();
-            return;
-        }
-        if (!player.inBattle || !player.currentEnemy) { addMsg("Нет боя!"); return; }
-        let dmg = (player.weapon?.dmg || 12) + Math.floor(Math.random() * 10);
-        player.currentEnemy.hp -= dmg;
-        addMsg(`⚔️ Урон ${dmg}. У ${player.currentEnemy.name} осталось ${Math.max(0, Math.floor(player.currentEnemy.hp))} HP.`);
-        if (player.currentEnemy.hp <= 0) {
-            let goldGain = player.currentEnemy.gold || 50;
-            player.gold += goldGain;
-            addMsg(`🏆 Победа! +${goldGain}💰`);
-            player.inBattle = false;
-            player.currentEnemy = null;
-            await savePlayer();
-        }
-        updateUI();
-        await savePlayer();
-    }
-    
-    function enemyAttack() {
-        if (!player.inBattle || !player.currentEnemy) return;
-        let dmg = Math.max(5, (player.currentEnemy.atk || 20) + Math.floor(Math.random() * 10) - 5);
-        player.hp -= dmg;
-        addMsg(`😖 ${player.currentEnemy.name} атакует! -${dmg} HP.`);
-        if (player.hp <= 0) {
-            addMsg(`💀 Вы пали...`);
-            player.hp = player.maxHp;
-            player.inBattle = false;
-            player.currentEnemy = null;
-        }
-        updateUI();
-    }
-    
-    function startBattle(enemy) {
-        if (player.inBattle) { addMsg("Вы уже в бою!"); return; }
-        if (currentPvpBattle) { addMsg("❌ Сначала заверши ПВП бой"); return; }
-        player.currentEnemy = JSON.parse(JSON.stringify(enemy));
-        player.inBattle = true;
-        addMsg(`⚔️ Бой с ${enemy.name} (❤️ ${enemy.hp})`);
-        updateUI();
-    }
-    
-    function heal() {
-        let cost = 45;
-        if (player.gold >= cost && player.hp < player.maxHp) {
-            player.gold -= cost;
-            player.hp = Math.min(player.maxHp, player.hp + 40);
-            addMsg(`💚 Лечение +40 HP. -${cost}💰.`);
-            savePlayer();
-        } else addMsg("❌ Не хватает");
-        updateUI();
-    }
-    
-    function shop() {
-        let panel = document.getElementById("dynamicPanel");
-        let weapons = [
-            { name: "Стальной меч", dmg: 22, cost: 400 },
-            { name: "Меч ветра", dmg: 32, cost: 850 },
-            { name: "Пламенный меч", dmg: 45, cost: 1500 }
-        ];
-        panel.innerHTML = `<strong>🏪 МАГАЗИН</strong><div class="select-list">
-            ${weapons.map((w, i) => `<div class="select-item" data-idx="${i}">${w.name} +${w.dmg} - ${w.cost}💰</div>`).join('')}
-        </div><button id="closePanel">Закрыть</button>`;
-        panel.classList.remove("hidden");
-        document.querySelectorAll(".select-item").forEach(el => {
-            el.onclick = () => {
-                let w = weapons[parseInt(el.dataset.idx)];
-                if (player.gold >= w.cost) {
-                    player.gold -= w.cost;
-                    player.weapon = { name: w.name, dmg: w.dmg };
-                    addMsg(`✅ Куплено: ${w.name}!`);
-                    updateUI();
-                    savePlayer();
-                    panel.classList.add("hidden");
-                } else addMsg("❌ Не хватает");
-            };
-        });
-        document.getElementById("closePanel").onclick = () => panel.classList.add("hidden");
-    }
-    
-    function showInventory() {
-        let panel = document.getElementById("dynamicPanel");
-        panel.innerHTML = `<strong>📦 ИНВЕНТАРЬ</strong><br>Оружие: ${player.weapon?.name || "нет"} (урон ${player.weapon?.dmg || 0})<br><button id="closePanel">Закрыть</button>`;
-        panel.classList.remove("hidden");
-        document.getElementById("closePanel").onclick = () => panel.classList.add("hidden");
-    }
-    
-    async function processCommand(cmd) {
-        let c = cmd.trim().toLowerCase();
-        if (c.startsWith("/пвп")) { await pvpCommand(cmd); return; }
-        if (c.startsWith("/передать")) {
-            let parts = cmd.split(" ");
-            if (parts.length >= 3) addMsg(await transferGold(parts[1], parseInt(parts[2])));
-            return;
-        }
-        if (c === "/топ") { addMsg("⏳ В разработке"); return; }
-        if (c === "статы") addMsg(`Ур.${player.level} ❤️${player.hp}/${player.maxHp} 🪙${player.gold}`);
-        else if (c === "помощь") addMsg(`Команды: статы, /передать Имя 100, /пвп вызвать/подтвердить/отклонить/статус`);
-        else addMsg(`❓ Неизвестно: ${cmd}`);
-        document.getElementById("cmdInput").value = "";
-    }
-    
-    // ========== ЗАПУСК ==========
-    setInterval(() => { if (player.inBattle && player.currentEnemy && player.hp > 0) enemyAttack(); }, 4000);
-    setInterval(() => { if (currentPlayerName) savePlayer(); }, 30000);
-    setInterval(() => { pvpUpdate(); }, 5000);
-    
-    document.getElementById("attackBtn").onclick = attack;
-    document.getElementById("healBtn").onclick = heal;
-    document.getElementById("shopBtn").onclick = shop;
-    document.getElementById("inventoryBtn").onclick = showInventory;
-    document.getElementById("sendBtn").onclick = () => { let inp = document.getElementById("cmdInput"); processCommand(inp.value); inp.value = ""; };
-    
-    document.getElementById("loginBtn").onclick = async () => {
-        const name = document.getElementById("loginName").value.trim();
-        if (!name) return;
-        const statusDiv = document.getElementById("loginStatus");
-        statusDiv.innerHTML = "🔄 Загрузка...";
-        
-        try {
-            let playerData = await loadPlayer(name);
-            if (!playerData) playerData = await createPlayer(name);
             
-            currentPlayerName = name;
-            player.gold = playerData.gold;
-            player.glory = playerData.glory;
-            player.level = playerData.level;
-            player.hp = playerData.hp;
-            player.maxHp = playerData.max_hp;
-            if (playerData.weapon_name) player.weapon = { name: playerData.weapon_name, dmg: playerData.weapon_dmg };
-            if (playerData.player_class) player.class = playerData.player_class;
-            
-            document.getElementById("loginScreen").style.display = "none";
-            document.getElementById("gameContainer").style.display = "block";
-            
-            if (!player.class) {
-                document.getElementById("dynamicPanel").innerHTML = `
-                    <div class="class-selector" style="display:flex;gap:10px;">
-                        <div class="class-btn" id="classWar">⚔️ ВОИН</div>
-                        <div class="class-btn" id="classMage">🔮 МАГ</div>
-                        <div class="class-btn" id="classArch">🏹 ЛУЧНИК</div>
-                    </div>`;
-                document.getElementById("dynamicPanel").classList.remove("hidden");
-                document.getElementById("classWar").onclick = () => { player.class = "warrior"; player.maxHp = 260; player.hp = 260; updateUI(); savePlayer(); document.getElementById("dynamicPanel").classList.add("hidden"); };
-                document.getElementById("classMage").onclick = () => { player.class = "mage"; player.maxHp = 180; player.hp = 180; updateUI(); savePlayer(); document.getElementById("dynamicPanel").classList.add("hidden"); };
-                document.getElementById("classArch").onclick = () => { player.class = "archer"; player.maxHp = 210; player.hp = 210; updateUI(); savePlayer(); document.getElementById("dynamicPanel").classList.add("hidden"); };
-            }
-            updateUI();
-            statusDiv.innerHTML = "✅ Готово!";
-        } catch(e) {
-            statusDiv.innerHTML = "❌ Ошибка: " + e.message;
-            console.log(e);
-        }
-    };
-    
-    const savedName = localStorage.getItem("savedPlayerName");
-    if (savedName) document.getElementById("loginName").value = savedName;
-</script>
+            // Обновляем currentBattle
+            const { data: updated } = await supabase.from('pvp_battles').select('*').eq('id', currentBattle?.id);
+            if (updated && updated[0]) currentBattle = updated[0];
+        };
+    </script>
 </body>
 </html>
