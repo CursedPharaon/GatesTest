@@ -28,7 +28,7 @@
         .enemy-panel { background: #0d1a2a; padding: 8px; margin: 6px 10px; border-radius: 20px; display: flex; justify-content: space-between; font-weight: bold; font-size: 0.8rem; }
         .enemy-effects { font-size: 0.65rem; color: #ffaa66; }
         .chat { max-height: 35vh; overflow-y: auto; padding: 10px; background: #051020; font-size: 0.8rem; }
-        .msg { background: #0f1a2c; padding: 6px 10px; border-radius: 18px; word-wrap: break-word; border-left: 3px solid #4c7a9a; align-self: flex-start; max-width: 94%; }
+        .msg { background: #0f1a2c; padding: 6px 10px; border-radius: 18px; word-wrap: break-word; border-left: 3px solid #4c7a9a; align-self: flex-start; max-width: 94%; margin-bottom: 6px; }
         .msg.system { background: #121e2e; border-left-color: #d6b356; }
         .msg.achievement { background: #1a2a1a; border-left-color: #6bc46b; }
         .msg.critical { background: #3a1a1a; border-left-color: #ff4444; font-weight: bold; }
@@ -47,14 +47,12 @@
         .select-item { background: #162336; padding: 6px 10px; border-radius: 40px; cursor: pointer; margin: 2px; font-size: 0.7rem; }
         .craft-item { background: #162336; padding: 6px; border-radius: 16px; margin: 4px; cursor: pointer; }
         .craft-recipe { font-size: 0.6rem; color: #aac8ff; }
-        .craft-damage { font-size: 0.65rem; color: #ffaa66; font-weight: bold; margin-left: 6px; }
         .shop-item { background: #162336; padding: 6px 10px; border-radius: 40px; margin: 3px; cursor: pointer; font-size: 0.7rem; display: flex; justify-content: space-between; }
         hr { border-color: #2e4b6e; margin: 5px; }
         .promo-btn, .theme-btn { background: #4a2e6e; grid-column: span 2; margin-top: 4px; }
         .theme-btn { background: #2e5a6e; }
         .glory { color: #ffd966; }
         .daily-boss-btn { background: #8b5e3c; }
-        .trial-active { background: #6b2e2e !important; }
         .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1a2a3a; color: #ffd966; padding: 8px 16px; border-radius: 40px; font-size: 0.8rem; z-index: 1000; animation: fadeOut 2s ease forwards; pointer-events: none; white-space: nowrap; }
         @keyframes fadeOut { 0% { opacity: 1; } 100% { opacity: 0; } }
         .skill-points { background: #4a2e6e; border-radius: 20px; padding: 2px 8px; }
@@ -122,7 +120,7 @@
     // ========== SUPABASE НАСТРОЙКИ ==========
     const SUPABASE_URL = "https://tmjqafqecjpizawdruzq.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtanFhZnFlY2pwaXphd2RydXpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTk2OTYsImV4cCI6MjA5NTQ3NTY5Nn0.8K7i5QEbjYWSvqw78P8RSR_abYM8uCRZbvC9Hp12bac";
-    const ADMIN_NAME = "ADMIN"; // ЗАМЕНИ НА СВОЁ ИМЯ
+    const ADMIN_NAME = "ADMIN";
     const GAME_VERSION = "2.0.0";
     document.getElementById("versionDisplay").innerText = "v" + GAME_VERSION;
     
@@ -202,7 +200,7 @@
     }
     
     async function supabaseCreatePlayer(username) {
-        const newPlayer = { username, gold: 800, glory: 0, level: 1, hp: 200, max_hp: 200, xp: 0, weapon_name: "⚔️ Ржавый меч", weapon_dmg: 12, player_class: "warrior" };
+        const newPlayer = { username, gold: 800, glory: 0, level: 1, hp: 200, max_hp: 200, xp: 0, weapon_name: "⚔️ Ржавый меч", weapon_dmg: 12, player_class: null };
         const res = await fetch(`${SUPABASE_URL}/rest/v1/players`, {
             method: 'POST',
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
@@ -254,43 +252,37 @@
     }
     
     // ========== ПВП ФУНКЦИИ ==========
-    async function pvpCheckActiveBattle() {
-        if (!currentPlayerName) return null;
-        const battles = await supabaseQuery(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&order=created_at.desc&limit=1`);
-        return battles?.[0] || null;
-    }
-    
     async function pvpUpdate() {
-    if (!currentPlayerName) return;
-    
-    // Проверка активного боя
-    const activeBattle = await supabaseQuery(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&order=created_at.desc&limit=1`);
-    if (activeBattle && activeBattle.length > 0) {
-        const battle = activeBattle[0];
-        if (!currentPvpBattle || currentPvpBattle.id !== battle.id) {
-            currentPvpBattle = battle;
-            addSys(`⚔️ ПВП БОЙ: ${battle.challenger} vs ${battle.opponent} | Ставка: ${battle.challenger_bet + battle.opponent_bet}💰 | Ход: ${battle.turn}`);
-            if (battle.challenger === currentPlayerName && battle.challenger_hp) player.hp = battle.challenger_hp;
-            if (battle.opponent === currentPlayerName && battle.opponent_hp) player.hp = battle.opponent_hp;
-            updateUI();
+        if (!currentPlayerName) return;
+        
+        // Проверка активного боя
+        const activeBattle = await supabaseQuery(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&order=created_at.desc&limit=1`);
+        if (activeBattle && activeBattle.length > 0) {
+            const battle = activeBattle[0];
+            if (!currentPvpBattle || currentPvpBattle.id !== battle.id) {
+                currentPvpBattle = battle;
+                addSys(`⚔️ ПВП БОЙ: ${battle.challenger} vs ${battle.opponent} | Ставка: ${battle.challenger_bet + battle.opponent_bet}💰 | Ход: ${battle.turn}`);
+                if (battle.challenger === currentPlayerName && battle.challenger_hp) player.hp = battle.challenger_hp;
+                if (battle.opponent === currentPlayerName && battle.opponent_hp) player.hp = battle.opponent_hp;
+                updateUI();
+            }
+            return;
         }
-        return;
+        
+        // Проверка входящих вызовов (pending)
+        const pendingCall = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+        if (pendingCall && pendingCall.length > 0 && !currentPvpBattle) {
+            const call = pendingCall[0];
+            addSys(`📢 ВАС ВЫЗВАЛИ НА ПВП! ${call.challenger} вызвал вас на бой. Ставка: ${call.challenger_bet}💰`);
+            addSys(`✅ Чтобы принять: /пвп ставка СУММА (сумма должна быть не меньше ${call.challenger_bet})`);
+            addSys(`❌ Чтобы отклонить: /пвп отклонить`);
+        }
+        
+        // Если нет активного боя и нет вызова — очищаем currentPvpBattle
+        if (!activeBattle && (!pendingCall || pendingCall.length === 0) && currentPvpBattle) {
+            currentPvpBattle = null;
+        }
     }
-    
-    // Проверка входящих вызовов (pending)
-    const pendingCall = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-    if (pendingCall && pendingCall.length > 0 && !currentPvpBattle) {
-        const call = pendingCall[0];
-        addSys(`📢 ВАС ВЫЗВАЛИ НА ПВП! ${call.challenger} вызвал вас на бой. Ставка: ${call.challenger_bet}💰`);
-        addSys(`✅ Чтобы принять: /пвп ставка СУММА (сумма должна быть не меньше ${call.challenger_bet})`);
-        addSys(`❌ Чтобы отклонить: /пвп отклонить`);
-    }
-    
-    // Если нет активного боя и нет вызова — очищаем currentPvpBattle
-    if (!activeBattle && !pendingCall && currentPvpBattle) {
-        currentPvpBattle = null;
-    }
-}
     
     async function pvpMakeAttack() {
         if (!currentPvpBattle) { addSys("❌ Нет активного ПВП боя"); return false; }
@@ -348,43 +340,124 @@
         return true;
     }
     
-   if (action === "вызвать" && parts[2] && parts[3]) {
-    const opponent = parts[2];
-    const bet = parseInt(parts[3]);
-    if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
-    if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
-    if (opponent === currentPlayerName) { addSys("❌ Нельзя вызвать самого себя"); return; }
-    
-    // Проверка, нет ли уже активного вызова от этого игрока
-    const existing = await supabaseQuery(`pvp_battles?challenger=eq.${currentPlayerName}&status=eq.pending`);
-    if (existing.length > 0) { addSys("❌ У тебя уже есть активный вызов"); return; }
-    
-    // Проверка, не занят ли оппонент боем
-    const opponentBusy = await supabaseQuery(`pvp_battles?or=(challenger.eq.${opponent},opponent.eq.${opponent})&status=eq.active`);
-    if (opponentBusy.length > 0) { addSys("❌ Соперник уже в ПВП бою"); return; }
-    
-    await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
-        method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            challenger: currentPlayerName, 
-            opponent, 
-            challenger_bet: bet, 
-            status: 'pending',
-            challenger_hp: player.hp,
-            opponent_hp: player.maxHp
-        })
-    });
-    addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰. Ждите ответа.`);
-    return;
-}
+    async function pvpCommand(cmd) {
+        const parts = cmd.split(" ");
+        const action = parts[1]?.toLowerCase();
+        
+        if (action === "вызвать" && parts[2] && parts[3]) {
+            const opponent = parts[2];
+            const bet = parseInt(parts[3]);
+            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
+            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
+            if (opponent === currentPlayerName) { addSys("❌ Нельзя вызвать самого себя"); return; }
+            
+            const existing = await supabaseQuery(`pvp_battles?challenger=eq.${currentPlayerName}&status=eq.pending`);
+            if (existing.length > 0) { addSys("❌ У тебя уже есть активный вызов"); return; }
+            
+            const opponentBusy = await supabaseQuery(`pvp_battles?or=(challenger.eq.${opponent},opponent.eq.${opponent})&status=eq.active`);
+            if (opponentBusy.length > 0) { addSys("❌ Соперник уже в ПВП бою"); return; }
+            
+            const targetExists = await supabaseLoadPlayer(opponent);
+            if (!targetExists) { addSys("❌ Игрок не найден"); return; }
+            
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    challenger: currentPlayerName, 
+                    opponent, 
+                    challenger_bet: bet,
+                    opponent_bet: 0,
+                    status: 'pending',
+                    challenger_hp: player.hp,
+                    opponent_hp: player.maxHp,
+                    turn: currentPlayerName
+                })
+            });
+            addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰. Ждите ответа.`);
+            return;
+        }
+        
+        if (action === "ставка" && parts[2]) {
+            const bet = parseInt(parts[2]);
+            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
+            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
+            
+            const pending = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+            if (!pending || pending.length === 0) { addSys("❌ Нет активного вызова к вам"); return; }
+            const call = pending[0];
+            
+            if (bet < call.challenger_bet) { addSys(`❌ Ставка должна быть не меньше ${call.challenger_bet}💰`); return; }
+            
+            player.gold -= bet;
+            await supabaseSavePlayer();
+            
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${call.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opponent_bet: bet, status: 'active', turn: call.challenger })
+            });
+            addSys(`✅ Вы приняли вызов! Ставка: ${bet}💰. Бой начинается!`);
+            await pvpUpdate();
+            return;
+        }
+        
+        if (action === "подтвердить") {
+            const pending = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+            if (!pending || pending.length === 0) { addSys("❌ Нет активного вызова к вам"); return; }
+            const call = pending[0];
+            if (player.gold < call.challenger_bet) { addSys(`❌ У вас нет ${call.challenger_bet}💰 для ставки`); return; }
+            
+            player.gold -= call.challenger_bet;
+            await supabaseSavePlayer();
+            
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${call.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opponent_bet: call.challenger_bet, status: 'active', turn: call.challenger })
+            });
+            addSys(`✅ Бой начался! Ставка ${call.challenger_bet}💰. Ход ${call.challenger}`);
+            await pvpUpdate();
+            return;
+        }
+        
+        if (action === "отклонить") {
+            const pending = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+            if (!pending || pending.length === 0) { addSys("❌ Нет активного вызова к вам"); return; }
+            const call = pending[0];
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${call.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'cancelled' })
+            });
+            addSys(`❌ Вы отклонили вызов от ${call.challenger}`);
+            await pvpUpdate();
+            return;
+        }
+        
+        if (action === "статус") {
+            if (currentPvpBattle) {
+                addSys(`⚔️ Активный ПВП бой: ${currentPvpBattle.challenger} (${currentPvpBattle.challenger_hp}❤️) vs ${currentPvpBattle.opponent} (${currentPvpBattle.opponent_hp}❤️) | Ход: ${currentPvpBattle.turn}`);
+            } else {
+                const pending = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+                if (pending && pending.length > 0) {
+                    addSys(`📢 Вам поступил вызов от ${pending[0].challenger} на ${pending[0].challenger_bet}💰`);
+                } else {
+                    addSys(`❌ Нет активных ПВП боёв или вызовов`);
+                }
+            }
+            return;
+        }
+        
+        addSys("❌ /пвп вызвать Имя 1000 | /пвп ставка 1000 | /пвп подтвердить | /пвп отклонить | /пвп статус");
+    }
     
     // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function clearChat() {
         document.getElementById("chatArea").innerHTML = '<div class="msg system">🌀 Чат очищен</div>';
     }
     
-    // ========== ИГРОВЫЕ МАССИВЫ (ВСЁ ОСТАВЛЕНО БЕЗ ИЗМЕНЕНИЙ) ==========
+    // ========== ИГРОВЫЕ МАССИВЫ ==========
     const QUESTS = [
         { name: "Лесной гоблин", hp: 160, atk: 28, gold: 90, xp: 45, glory: 5, key: "Медный ключ", keyChance: 0.6 },
         { name: "Каменный тролль", hp: 290, atk: 42, gold: 150, xp: 80, glory: 8, key: "Серебряный ключ", keyChance: 0.55 },
@@ -542,11 +615,6 @@
         { name: "🔑 Драконий ключ", cost: 500, effect: "key", keyName: "Драконий ключ", value: 1 }
     ];
     
-    const PROMO_CODES = [
-        { code: "WELCOME", name: "Приветственный", money: 500, glory: 50 },
-        { code: "GOLDENKEY", name: "Золотой сундук", money: 1000, glory: 100, keyBonus: "Золотой ключ", keyQty: 1 }
-    ];
-    
     // ========== ИГРОК ==========
     let player = {
         class: null, level: 1, xp: 0, gold: 800, glory: 0, hp: 200, maxHp: 200, mp: 50, maxMp: 50,
@@ -695,7 +763,7 @@
         updateUI();
     }
     
-    // ========== МЕНЮ (сокращены для экономии места, но все функции сохранены) ==========
+    // ========== МЕНЮ ==========
     function showQuests() { 
         let panel = document.getElementById("dynamicPanel"); 
         panel.innerHTML = `<strong>📜 КВЕСТЫ (12)</strong><div class="select-list">`+QUESTS.map((q,i)=>`<div class="select-item" data-idx="${i}">${q.name} (❤️${q.hp} ⚔️${q.atk}) ➜ ${q.key} +${q.glory}✨</div>`).join('')+`</div><button id="closePanel">Закрыть</button>`; 
