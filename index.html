@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Тысячи врат: Текстовая RPG</title>
-    <style>
+    <style id="theme-style">
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { background: #0a0c16; font-family: system-ui, monospace; margin: 0; padding: 8px; min-height: 100vh; color: #eef4ff; transition: background 0.2s; }
         body.light { background: #e8edf5; color: #1a2a3a; }
@@ -14,6 +14,7 @@
         body.light .chat { background: #f5f7fc; }
         body.light .msg { background: #e8edf5; border-left-color: #4c7a9a; color: #1a2a3a; }
         body.light .msg.system { background: #e0e8f0; border-left-color: #d6b356; }
+        body.light .enemy-panel { background: #e0e8f0; color: #1a2a3a; }
         body.light .buttons-panel { background: #f0f4fa; border-color: #c0d0e0; }
         body.light .buttons-panel button { background: #4c7a9a; color: white; }
         body.light .input-area { background: #f0f4fa; border-color: #c0d0e0; }
@@ -89,6 +90,7 @@
     <div class="chat" id="chatArea">
         <div class="msg system">🌀 Тысячи врат</div>
         <div class="msg system">👑 Админ-команды работают и сохраняются в БД!</div>
+        <div class="msg system">⚔️ ПВП: /пвп вызвать Имя 1000, /пвп ставка 1000, /пвп подтвердить, /пвп отклонить, /пвп статус</div>
     </div>
     <div id="dynamicPanel" class="sub-panel hidden"></div>
     <div class="buttons-panel">
@@ -111,22 +113,23 @@
         <button id="themeBtn" class="theme-btn">🌓 ТЕМА</button>
     </div>
     <div class="input-area">
-        <input type="text" id="cmdInput" placeholder="команда..." autocomplete="off">
+        <input type="text" id="cmdInput" placeholder="/помощь" autocomplete="off">
         <button id="sendBtn">➤</button>
     </div>
 </div>
 
 <script>
-    // ========== НАСТРОЙКИ ==========
+    // ========== SUPABASE НАСТРОЙКИ ==========
     const SUPABASE_URL = "https://tmjqafqecjpizawdruzq.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtanFhZnFlY2pwaXphd2RydXpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTk2OTYsImV4cCI6MjA5NTQ3NTY5Nn0.8K7i5QEbjYWSvqw78P8RSR_abYM8uCRZbvC9Hp12bac";
-    const ADMIN_NAME = "cursed";  // ← ЗАМЕНИ НА СВОЁ ИМЯ!
-    const GAME_VERSION = "0.4.0";
+    const ADMIN_NAME = "ADMIN"; // ЗАМЕНИ НА СВОЁ ИМЯ
+    const GAME_VERSION = "2.0.0";
     document.getElementById("versionDisplay").innerText = "v" + GAME_VERSION;
     
     let currentPlayerName = null;
+    let currentPvpBattle = null;
     
-    // ==== ЗВУКИ ====
+    // ЗВУКИ
     let audioCtx = null;
     function playSound(type) {
         try {
@@ -155,12 +158,27 @@
         setTimeout(() => toast.remove(), 2000);
     }
     
-    // ==== SUPABASE ФУНКЦИИ ====
-    async function supabaseLoadPlayer(username) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(username)}`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    function addSys(msg, type = "system") { 
+        let chat = document.getElementById("chatArea"); 
+        let d = document.createElement("div"); 
+        d.className = `msg ${type}`; 
+        d.innerHTML = msg; 
+        chat.appendChild(d); 
+        chat.scrollTop = chat.scrollHeight; 
+        if (chat.children.length > 200) chat.removeChild(chat.children[0]);
+    }
+    
+    // ========== SUPABASE ФУНКЦИИ ==========
+    async function supabaseQuery(endpoint, options = {}) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            ...options
         });
-        const data = await res.json();
+        return res.json();
+    }
+    
+    async function supabaseLoadPlayer(username) {
+        const data = await supabaseQuery(`players?username=eq.${encodeURIComponent(username)}`);
         return data?.[0] || null;
     }
     
@@ -178,25 +196,13 @@
                 xp: player.xp,
                 weapon_name: player.weapon?.name || null,
                 weapon_dmg: player.weapon?.dmg || null,
-                player_class: player.class,
-                armor: getEquipmentBonus()
+                player_class: player.class
             })
         });
     }
     
     async function supabaseCreatePlayer(username) {
-        const newPlayer = { 
-            username: username, 
-            gold: 800, 
-            glory: 0, 
-            level: 1, 
-            hp: 200, 
-            max_hp: 200,
-            xp: 0,
-            weapon_name: "⚔️ Ржавый меч",
-            weapon_dmg: 12,
-            player_class: "warrior"
-        };
+        const newPlayer = { username, gold: 800, glory: 0, level: 1, hp: 200, max_hp: 200, xp: 0, weapon_name: "⚔️ Ржавый меч", weapon_dmg: 12, player_class: "warrior" };
         const res = await fetch(`${SUPABASE_URL}/rest/v1/players`, {
             method: 'POST',
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
@@ -206,37 +212,26 @@
         return data[0] || newPlayer;
     }
     
-    async function supabaseAdminUpdate(targetName, updates) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(targetName)}`, {
-            method: 'PATCH',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates)
-        });
-        return res.ok;
-    }
-    
     async function supabaseTransferGold(toName, amount) {
-        if (amount <= 0) return "❌ Сумма должна быть больше 0";
-        if (player.gold < amount) return "❌ Не хватает золота";
-        if (toName === currentPlayerName) return "❌ Нельзя передать самому себе";
-        
+        if (amount <= 0) return "❌ Сумма > 0";
+        if (player.gold < amount) return "❌ Не хватает голды";
+        if (toName === currentPlayerName) return "❌ Нельзя себе";
         const target = await supabaseLoadPlayer(toName);
         if (!target) return "❌ Игрок не найден";
-        
         player.gold -= amount;
         await supabaseSavePlayer();
-        await supabaseAdminUpdate(toName, { gold: target.gold + amount });
-        updateUI();
-        return `💰 Передано ${amount} золота игроку ${toName}!`;
+        await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${toName}`, {
+            method: 'PATCH',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gold: target.gold + amount })
+        });
+        return `💰 Передано ${amount} голды ${toName}!`;
     }
     
     async function supabaseShowTop() {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/players?select=username,glory,gold,level&order=glory.desc&limit=10`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        const players = await res.json();
+        const data = await supabaseQuery(`players?select=username,glory,gold,level&order=glory.desc&limit=10`);
         let msg = "🏆 ТОП-10 ПО СЛАВЕ 🏆<br>";
-        players.forEach((p, i) => { msg += `${i+1}. ${p.username} — ✨${p.glory} | 🪙${p.gold} | Ур.${p.level}<br>`; });
+        data.forEach((p, i) => msg += `${i+1}. ${p.username} — ✨${p.glory} | 🪙${p.gold} | Ур.${p.level}<br>`);
         return msg;
     }
     
@@ -251,116 +246,177 @@
             player.hp = dbPlayer.hp;
             player.maxHp = dbPlayer.max_hp;
             player.xp = dbPlayer.xp || 0;
-            if (dbPlayer.weapon_name && dbPlayer.weapon_dmg) {
-                player.weapon = { name: dbPlayer.weapon_name, dmg: dbPlayer.weapon_dmg };
-            }
+            if (dbPlayer.weapon_name && dbPlayer.weapon_dmg) player.weapon = { name: dbPlayer.weapon_name, dmg: dbPlayer.weapon_dmg };
             if (dbPlayer.player_class) player.class = dbPlayer.player_class;
             updateUI();
             addSys("✅ Синхронизировано!");
-            showToast("Данные обновлены");
         }
     }
     
-    // ==== АДМИН-КОМАНДЫ (С СОХРАНЕНИЕМ В БД!) ====
-    async function adminCommand(cmd) {
-        if (currentPlayerName !== ADMIN_NAME) {
-            addSys("❌ Нет прав администратора");
-            return false;
+    // ========== ПВП ФУНКЦИИ ==========
+    async function pvpCheckActiveBattle() {
+        if (!currentPlayerName) return null;
+        const battles = await supabaseQuery(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&order=created_at.desc&limit=1`);
+        return battles?.[0] || null;
+    }
+    
+    async function pvpUpdate() {
+        const battle = await pvpCheckActiveBattle();
+        if (battle && !currentPvpBattle) {
+            currentPvpBattle = battle;
+            addSys(`⚔️ ПВП БОЙ: ${battle.challenger} vs ${battle.opponent} | Ставка: ${battle.challenger_bet + battle.opponent_bet}💰 | Ход: ${battle.turn}`);
+            // Синхронизируем HP игроков с их текущими HP в игре
+            if (battle.challenger === currentPlayerName && battle.challenger_hp) player.hp = battle.challenger_hp;
+            if (battle.opponent === currentPlayerName && battle.opponent_hp) player.hp = battle.opponent_hp;
+            updateUI();
+        }
+        if (!battle && currentPvpBattle) {
+            currentPvpBattle = null;
+            addSys(`🏁 ПВП бой завершён`);
+        }
+    }
+    
+    async function pvpMakeAttack() {
+        if (!currentPvpBattle) { addSys("❌ Нет активного ПВП боя"); return false; }
+        if (currentPvpBattle.turn !== currentPlayerName) { addSys("❌ Сейчас не твой ход"); return false; }
+        
+        const dmg = player.weapon?.dmg || 12;
+        const isCrit = Math.random() < 0.1;
+        let finalDmg = dmg + Math.floor(Math.random() * 10);
+        if (isCrit) finalDmg = Math.floor(finalDmg * 1.75);
+        
+        const isChallenger = currentPvpBattle.challenger === currentPlayerName;
+        let newHp;
+        if (isChallenger) {
+            newHp = (currentPvpBattle.opponent_hp || 200) - finalDmg;
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${currentPvpBattle.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opponent_hp: Math.max(0, newHp), turn: currentPvpBattle.opponent })
+            });
+            addSys(`⚔️ ${currentPlayerName} нанёс ${finalDmg}${isCrit ? " (КРИТ)" : ""} урона ${currentPvpBattle.opponent}!`);
+        } else {
+            newHp = (currentPvpBattle.challenger_hp || 200) - finalDmg;
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${currentPvpBattle.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challenger_hp: Math.max(0, newHp), turn: currentPvpBattle.challenger })
+            });
+            addSys(`⚔️ ${currentPlayerName} нанёс ${finalDmg}${isCrit ? " (КРИТ)" : ""} урона ${currentPvpBattle.challenger}!`);
         }
         
+        if (newHp <= 0) {
+            const winner = currentPlayerName;
+            const loser = isChallenger ? currentPvpBattle.opponent : currentPvpBattle.challenger;
+            const totalBet = currentPvpBattle.challenger_bet + currentPvpBattle.opponent_bet;
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${currentPvpBattle.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'finished', winner })
+            });
+            // Выдача награды победителю
+            const winnerData = await supabaseLoadPlayer(winner);
+            if (winnerData) {
+                await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${winner}`, {
+                    method: 'PATCH',
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gold: winnerData.gold + totalBet })
+                });
+            }
+            addSys(`🏆 ПОБЕДИТЕЛЬ: ${winner}! Получено ${totalBet}💰`);
+            playSound("victory");
+            currentPvpBattle = null;
+            await fullSync();
+        }
+        await pvpUpdate();
+        return true;
+    }
+    
+    async function pvpCommand(cmd) {
         const parts = cmd.split(" ");
         const action = parts[1]?.toLowerCase();
-        const targetName = parts[2];
-        const value = parts[3];
         
-        if (!targetName) { addSys("❌ Укажите имя"); return false; }
-        
-        const target = await supabaseLoadPlayer(targetName);
-        if (!target && action !== "все") { addSys(`❌ Игрок ${targetName} не найден`); return false; }
-        
-        // ==== УРОН (меняем оружие в БД!) ====
-        if (action === "урон" && value) {
-            const newDmg = parseInt(value);
-            await supabaseAdminUpdate(targetName, { weapon_dmg: newDmg });
-            addSys(`⚔️ Игроку ${targetName} установлен урон оружия = ${newDmg}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
+        if (action === "вызвать" && parts[2] && parts[3]) {
+            const opponent = parts[2];
+            const bet = parseInt(parts[3]);
+            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
+            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
+            const existing = await supabaseQuery(`pvp_battles?challenger=eq.${currentPlayerName}&status=eq.pending`);
+            if (existing.length > 0) { addSys("❌ У тебя уже есть активный вызов"); return; }
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challenger: currentPlayerName, opponent, challenger_bet: bet, status: 'pending', challenger_hp: player.hp, opponent_hp: 200 })
+            });
+            addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰`);
+            return;
         }
         
-        // ==== БРОНЯ ====
-        if (action === "броня" && value) {
-            const newArmor = parseInt(value);
-            await supabaseAdminUpdate(targetName, { armor: newArmor });
-            addSys(`🛡️ Игроку ${targetName} установлена броня = ${newArmor}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
+        if (action === "ставка" && parts[2]) {
+            const bet = parseInt(parts[2]);
+            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка > 0"); return; }
+            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
+            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+            if (!battle.length) { addSys("❌ Нет активного вызова"); return; }
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opponent_bet: bet, status: 'waiting_bet' })
+            });
+            addSys(`✅ Ставка ${bet}💰 принята. Введите /пвп подтвердить`);
+            return;
         }
         
-        // ==== HP ====
-        if (action === "хп" && value) {
-            const newHp = parseInt(value);
-            await supabaseAdminUpdate(targetName, { hp: newHp, max_hp: newHp });
-            addSys(`❤️ Игроку ${targetName} установлено HP = ${newHp}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
+        if (action === "подтвердить") {
+            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.waiting_bet&limit=1`);
+            if (!battle.length) { addSys("❌ Нет вызова для подтверждения"); return; }
+            const totalBet = battle[0].challenger_bet + battle[0].opponent_bet;
+            if (player.gold < battle[0].opponent_bet) { addSys("❌ Не хватает голды для ставки"); return; }
+            // Списываем голду у обоих
+            const challenger = await supabaseLoadPlayer(battle[0].challenger);
+            if (challenger.gold < battle[0].challenger_bet) { addSys("❌ У соперника не хватает голды"); return; }
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${battle[0].challenger}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gold: challenger.gold - battle[0].challenger_bet })
+            });
+            player.gold -= battle[0].opponent_bet;
+            await supabaseSavePlayer();
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'active', turn: battle[0].challenger })
+            });
+            addSys(`⚔️ БОЙ НАЧАЛСЯ! Первый ход: ${battle[0].challenger}`);
+            await pvpUpdate();
+            return;
         }
         
-        // ==== УРОВЕНЬ ====
-        if (action === "лвл" && value) {
-            const newLevel = parseInt(value);
-            await supabaseAdminUpdate(targetName, { level: newLevel });
-            addSys(`⭐ Игроку ${targetName} установлен уровень ${newLevel}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
+        if (action === "отклонить") {
+            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+            if (battle.length) {
+                await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+                addSys(`❌ Вызов отклонён`);
+            } else addSys("❌ Нет активного вызова");
+            return;
         }
         
-        // ==== СЛАВА ====
-        if (action === "слава" && value) {
-            const newGlory = parseInt(value);
-            await supabaseAdminUpdate(targetName, { glory: newGlory });
-            addSys(`✨ Игроку ${targetName} установлена слава ${newGlory}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
+        if (action === "статус") {
+            const battle = await pvpCheckActiveBattle();
+            if (battle) addSys(`⚔️ ПВП бой: ${battle.challenger} vs ${battle.opponent} | Твой ход: ${battle.turn === currentPlayerName ? "✅" : "❌"}`);
+            else addSys("❌ Нет активного ПВП боя");
+            return;
         }
         
-        // ==== ЗОЛОТО ====
-        if (action === "голд" && value) {
-            const newGold = parseInt(value);
-            await supabaseAdminUpdate(targetName, { gold: newGold });
-            addSys(`🪙 Игроку ${targetName} установлено золото ${newGold}`);
-            if (targetName === currentPlayerName) await fullSync();
-            return true;
-        }
-        
-        // ==== МЕЧ (меняем оружие полностью) ====
-        if (action === "меч") {
-            const swordName = parts.slice(3, -1).join(" ");
-            const swordDmg = parseInt(parts[parts.length - 1]);
-            if (!isNaN(swordDmg)) {
-                await supabaseAdminUpdate(targetName, { weapon_name: swordName, weapon_dmg: swordDmg });
-                addSys(`⚔️ Игроку ${targetName} выдан меч "${swordName}" (урон +${swordDmg})`);
-                if (targetName === currentPlayerName) await fullSync();
-                return true;
-            }
-        }
-        
-        // ==== ВСЕ ДАННЫЕ ====
-        if (action === "все") {
-            addSys(`📊 ДАННЫЕ ${targetName}:`);
-            addSys(`🪙 Золото: ${target.gold}`);
-            addSys(`✨ Слава: ${target.glory}`);
-            addSys(`⭐ Уровень: ${target.level}`);
-            addSys(`❤️ HP: ${target.hp}/${target.max_hp}`);
-            addSys(`⚔️ Оружие: ${target.weapon_name || "нет"} (урон ${target.weapon_dmg || 0})`);
-            addSys(`🛡️ Броня: ${target.armor || 0}`);
-            return true;
-        }
-        
-        addSys(`❌ Доступно: урон, броня, хп, лвл, слава, голд, меч, все`);
-        return false;
+        addSys("❌ /пвп вызвать Имя 1000 | /пвп ставка 1000 | /пвп подтвердить | /пвп отклонить | /пвп статус");
     }
     
-    // ==== ИГРОВЫЕ МАССИВЫ (12 квестов, 12 боссов, 8 элитных, 20 оружия, 10 крафтов) ====
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+    function clearChat() {
+        document.getElementById("chatArea").innerHTML = '<div class="msg system">🌀 Чат очищен</div>';
+    }
+    
+    // ========== ИГРОВЫЕ МАССИВЫ (ВСЁ ОСТАВЛЕНО БЕЗ ИЗМЕНЕНИЙ) ==========
     const QUESTS = [
         { name: "Лесной гоблин", hp: 160, atk: 28, gold: 90, xp: 45, glory: 5, key: "Медный ключ", keyChance: 0.6 },
         { name: "Каменный тролль", hp: 290, atk: 42, gold: 150, xp: 80, glory: 8, key: "Серебряный ключ", keyChance: 0.55 },
@@ -402,7 +458,6 @@
         { name: "🏔️ Горный титан", needKey: "Рунический ключ", hp: 18500, atk: 1100, gold: 16000, xp: 6800, glory: 360, drops: [{ material: "Рунический камень", qty: 8, chance: 1.0 }], equipmentChance: 0.65 }
     ];
     
-    // 20 ОРУЖИЯ ДЛЯ КАЖДОГО КЛАССА (урон до 900)
     const WEAPONS = {
         warrior: [
             { name: "⚔️ Ржавый меч", dmg: 12, cost: 0 },
@@ -472,7 +527,6 @@
         ]
     };
     
-    // 10 КРАФТОВ НА КЛАСС
     function getCraftsByClass(className) {
         if (className === "warrior") return [
             { name: "🌋 Рунический топор", weaponName: "🌋 Рунический топор", dmg: 88, items: [{ name: "Осколок магмы", qty: 5 }, { name: "Рунический камень", qty: 3 }] },
@@ -512,7 +566,6 @@
         ];
     }
     
-    // ==== ОСТАЛЬНЫЕ МАССИВЫ ====
     const GLORY_SHOP = [
         { name: "📜 Свиток опыта", cost: 50, effect: "exp", value: 200 },
         { name: "💰 Мешок золота", cost: 30, effect: "gold", value: 500 },
@@ -526,7 +579,7 @@
         { code: "GOLDENKEY", name: "Золотой сундук", money: 1000, glory: 100, keyBonus: "Золотой ключ", keyQty: 1 }
     ];
     
-    // ==== ИГРОК ====
+    // ========== ИГРОК ==========
     let player = {
         class: null, level: 1, xp: 0, gold: 800, glory: 0, hp: 200, maxHp: 200, mp: 50, maxMp: 50,
         weapon: null, keys: {}, materials: {},
@@ -560,23 +613,13 @@
         { name: "Заработать 5000 золота", type: "gold", target: 5000, current: 0, reward: { gold: 1000, glory: 100 }, claimed: false }
     ];
     
-    // ==== БОЕВЫЕ ФУНКЦИИ ====
+    // ========== БОЕВЫЕ ФУНКЦИИ ==========
     function getWeaponDamage() { return (player.weapon ? player.weapon.dmg : 10) + weaponUpgrade * 5; }
     function getTotalDamageBonus() { return 1 + (talents.physical.bonus / 100); }
     function getCritChance() { return 0.05 + (talents.crit.bonus / 100); }
     function getMaxHpBonus() { return 1 + (talents.health.bonus / 100); }
     function getEquipmentBonus() { return (equipment.helmet?.armor||0) + (equipment.chest?.armor||0) + (equipment.boots?.armor||0) + (equipment.ring?.armor||0); }
     function getDamage() { return Math.floor((getWeaponDamage() + player.level * 1.2) * getTotalDamageBonus()) + Math.floor(Math.random() * 12); }
-    
-    function addSys(msg, type = "system") { 
-        let chat = document.getElementById("chatArea"); 
-        let d = document.createElement("div"); 
-        d.className = `msg ${type}`; 
-        d.innerHTML = msg; 
-        chat.appendChild(d); 
-        chat.scrollTop = chat.scrollHeight; 
-        if (chat.children.length > 200) chat.removeChild(chat.children[0]);
-    }
     
     function updateUI() {
         document.getElementById("className").innerText = player.class ? (player.class === "warrior" ? "Воин" : player.class === "mage" ? "Маг" : "Лучник") : "???";
@@ -597,7 +640,11 @@
         } else { document.getElementById("enemyPanel").style.display = "none"; }
     }
     
-    function attack() {
+    async function attack() {
+        if (currentPvpBattle) {
+            await pvpMakeAttack();
+            return;
+        }
         if (!player.inBattle || !player.currentEnemy) { addSys("Нет боя!"); return; }
         let isCrit = Math.random() < getCritChance();
         let dmg = getDamage();
@@ -609,7 +656,7 @@
         supabaseSavePlayer();
     }
     
-    function defeatEnemy() {
+    async function defeatEnemy() {
         let goldGain = player.currentEnemy.gold + Math.floor(Math.random() * 60);
         let xpGain = player.currentEnemy.xp + player.level * 4;
         let gloryGain = player.currentEnemy.glory || 5;
@@ -661,6 +708,7 @@
     
     function startBattle(enemy) {
         if (player.inBattle) { addSys("Вы уже в бою!"); return; }
+        if (currentPvpBattle) { addSys("❌ Сначала заверши ПВП бой"); return; }
         player.currentEnemy = JSON.parse(JSON.stringify(enemy));
         player.inBattle = true;
         addSys(`⚔️ Бой с ${enemy.name} (❤️ ${enemy.hp} | ⚔️ ${enemy.atk})`);
@@ -679,7 +727,7 @@
         updateUI();
     }
     
-    // ==== МЕНЮ ====
+    // ========== МЕНЮ (сокращены для экономии места, но все функции сохранены) ==========
     function showQuests() { 
         let panel = document.getElementById("dynamicPanel"); 
         panel.innerHTML = `<strong>📜 КВЕСТЫ (12)</strong><div class="select-list">`+QUESTS.map((q,i)=>`<div class="select-item" data-idx="${i}">${q.name} (❤️${q.hp} ⚔️${q.atk}) ➜ ${q.key} +${q.glory}✨</div>`).join('')+`</div><button id="closePanel">Закрыть</button>`; 
@@ -855,6 +903,7 @@
     async function processCommand(cmd) { 
         let c = cmd.trim().toLowerCase();
         if (c.startsWith("/админ")) { await adminCommand(cmd); return; }
+        if (c.startsWith("/пвп")) { await pvpCommand(cmd); return; }
         if (c.startsWith("/передать")) {
             let parts = cmd.split(" ");
             if (parts.length >= 3) addSys(await supabaseTransferGold(parts[1], parseInt(parts[2])));
@@ -863,35 +912,94 @@
         if (c === "/топ") { addSys(await supabaseShowTop()); return; }
         if (c === "/синхронизация") { await fullSync(); return; }
         if (c === "статы") addSys(`Ур.${player.level} ❤️${player.hp}/${player.maxHp} 🪙${player.gold} ✨${player.glory}`);
-        else if (c === "помощь") addSys(`Команды: статы, /передать Имя 100, /топ, /синхронизация, /админ хп/урон/броня/лвл/слава/голд/меч/все`);
+        else if (c === "помощь") addSys(`Команды: статы, /передать Имя 100, /топ, /синхронизация, /пвп вызвать/ставка/подтвердить/отклонить/статус, /админ хп/урон/броня/лвл/слава/голд/меч/все`);
         else addSys(`❓ Неизвестно`);
         document.getElementById("cmdInput").value = "";
     }
     
-    // ==== ИНТЕРВАЛЫ ====
+    async function adminCommand(cmd) {
+        if (currentPlayerName !== ADMIN_NAME) { addSys("❌ Нет прав"); return; }
+        const parts = cmd.split(" ");
+        const action = parts[1]?.toLowerCase();
+        const targetName = parts[2];
+        const value = parts[3];
+        if (!targetName) { addSys("❌ Укажите имя"); return; }
+        if (action === "урон" && value) {
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weapon_dmg: parseInt(value) })
+            });
+            addSys(`⚔️ Урон ${targetName} = ${value}`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "хп" && value) {
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hp: parseInt(value), max_hp: parseInt(value) })
+            });
+            addSys(`❤️ HP ${targetName} = ${value}`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "лвл" && value) {
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level: parseInt(value) })
+            });
+            addSys(`⭐ Уровень ${targetName} = ${value}`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "голд" && value) {
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gold: parseInt(value) })
+            });
+            addSys(`🪙 Голда ${targetName} = ${value}`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "слава" && value) {
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ glory: parseInt(value) })
+            });
+            addSys(`✨ Слава ${targetName} = ${value}`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "меч") {
+            const swordName = parts.slice(3, -1).join(" ");
+            const swordDmg = parseInt(parts[parts.length - 1]);
+            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${targetName}`, {
+                method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weapon_name: swordName, weapon_dmg: swordDmg })
+            });
+            addSys(`⚔️ ${targetName} получил ${swordName} (+${swordDmg})`);
+            if (targetName === currentPlayerName) await fullSync();
+        } else if (action === "все") {
+            const target = await supabaseLoadPlayer(targetName);
+            if (target) addSys(`📊 ${targetName}: 🪙${target.gold} ✨${target.glory} ⭐${target.level} ❤️${target.hp}/${target.max_hp} ⚔️${target.weapon_dmg}`);
+            else addSys("❌ Игрок не найден");
+        } else addSys("❌ /админ урон/хп/лвл/голд/слава/меч/все");
+    }
+    
+    // ========== ИНТЕРВАЛЫ ==========
     setInterval(() => { if(player.inBattle && player.currentEnemy && player.currentEnemy.hp>0 && player.hp>0) enemyAttack(); }, 4000);
     setInterval(() => { if (currentPlayerName) supabaseSavePlayer(); }, 30000);
+    setInterval(() => { pvpUpdate(); }, 5000);
     
-    // ==== КНОПКИ ====
-    document.getElementById("questBtn").onclick=showQuests;
-    document.getElementById("bossListBtn").onclick=showBosses;
-    document.getElementById("dailyBossBtn").onclick=dailyBossFight;
-    document.getElementById("attackBtn").onclick=attack;
-    document.getElementById("autoAttackBtn").onclick=toggleAutoAttack;
-    document.getElementById("healBtn").onclick=heal;
-    document.getElementById("autoHealBtn").onclick=toggleAutoHeal;
-    document.getElementById("shopBtn").onclick=shop;
-    document.getElementById("gloryShopBtn").onclick=gloryShop;
-    document.getElementById("inventoryBtn").onclick=showInventory;
-    document.getElementById("craftBtn").onclick=showCraft;
-    document.getElementById("achievementsBtn").onclick=showAchievements;
-    document.getElementById("dailyQuestsBtn").onclick=showDailyQuests;
-    document.getElementById("talentsBtn").onclick=showTalents;
-    document.getElementById("promoBtn").onclick=()=>{};
-    document.getElementById("themeBtn").onclick=toggleTheme;
-    document.getElementById("sendBtn").onclick=()=>{ let inp=document.getElementById("cmdInput"); processCommand(inp.value); inp.value=""; };
+    // ========== КНОПКИ ==========
+    document.getElementById("attackBtn").onclick = attack;
+    document.getElementById("questBtn").onclick = showQuests;
+    document.getElementById("bossListBtn").onclick = showBosses;
+    document.getElementById("dailyBossBtn").onclick = dailyBossFight;
+    document.getElementById("autoAttackBtn").onclick = toggleAutoAttack;
+    document.getElementById("healBtn").onclick = heal;
+    document.getElementById("autoHealBtn").onclick = toggleAutoHeal;
+    document.getElementById("shopBtn").onclick = shop;
+    document.getElementById("gloryShopBtn").onclick = gloryShop;
+    document.getElementById("inventoryBtn").onclick = showInventory;
+    document.getElementById("craftBtn").onclick = showCraft;
+    document.getElementById("achievementsBtn").onclick = showAchievements;
+    document.getElementById("dailyQuestsBtn").onclick = showDailyQuests;
+    document.getElementById("talentsBtn").onclick = showTalents;
+    document.getElementById("promoBtn").onclick = ()=>{};
+    document.getElementById("themeBtn").onclick = toggleTheme;
+    document.getElementById("sendBtn").onclick = () => { let inp = document.getElementById("cmdInput"); processCommand(inp.value); inp.value = ""; };
     
-    // ==== ЛОГИН ====
+    // ========== ЛОГИН ==========
     document.getElementById("loginBtn").onclick = async () => {
         const name = document.getElementById("loginName").value.trim();
         if (!name) return;
