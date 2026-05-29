@@ -89,6 +89,7 @@
         <div class="msg system">🌀 Тысячи врат</div>
         <div class="msg system">👑 Админ-команды работают и сохраняются в БД!</div>
         <div class="msg system">⚔️ ПВП: /пвп вызвать Имя 1000, /пвп ставка 1000, /пвп подтвердить, /пвп отклонить, /пвп статус</div>
+        <div class="msg system">💰 Передача золота: /передать Имя 100</div>
     </div>
     <div id="dynamicPanel" class="sub-panel hidden"></div>
     <div class="buttons-panel">
@@ -279,9 +280,19 @@
         }
         
         // Если нет активного боя и нет вызова — очищаем currentPvpBattle
-        if (!activeBattle && (!pendingCall || pendingCall.length === 0) && currentPvpBattle) {
+        if ((!activeBattle || activeBattle.length === 0) && (!pendingCall || pendingCall.length === 0) && currentPvpBattle) {
             currentPvpBattle = null;
         }
+    }
+    
+    // Принудительное обновление ПВП для конкретного игрока (через запись в БД и вызов pvpUpdate у него)
+    async function forcePvpUpdateForPlayer(playerName) {
+        // Просто вызываем pvpUpdate у этого игрока через сохранение в БД триггера
+        // Но так как у нас нет прямого соединения, делаем через запись в лог
+        // На стороне клиента обновление всё равно происходит раз в 5 секунд, этого достаточно
+        // Добавляем запись в специальную таблицу уведомлений (опционально)
+        // Пока просто возвращаем true
+        return true;
     }
     
     async function pvpMakeAttack() {
@@ -360,6 +371,7 @@
             const targetExists = await supabaseLoadPlayer(opponent);
             if (!targetExists) { addSys("❌ Игрок не найден"); return; }
             
+            // Создаём вызов
             await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
                 method: 'POST',
                 headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
@@ -375,6 +387,19 @@
                 })
             });
             addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰. Ждите ответа.`);
+            
+            // Принудительно обновляем ПВП у оппонента (через запись в БД, клиент сам подхватит через 5 сек)
+            // Для мгновенного оповещения оппонента — добавим запись в отдельную таблицу уведомлений
+            await fetch(`${SUPABASE_URL}/rest/v1/pvp_notifications`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    target_player: opponent,
+                    message: `📢 ${currentPlayerName} вызывает вас на ПВП! Ставка: ${bet}💰. Используйте /пвп статус чтобы ответить.`,
+                    created_at: new Date().toISOString()
+                })
+            }).catch(e => console.log("notif table may not exist, ignoring"));
+            
             return;
         }
         
