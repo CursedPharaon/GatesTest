@@ -261,20 +261,36 @@
     }
     
     async function pvpUpdate() {
-        const battle = await pvpCheckActiveBattle();
-        if (battle && !currentPvpBattle) {
+    if (!currentPlayerName) return;
+    
+    // Проверка активного боя
+    const activeBattle = await supabaseQuery(`pvp_battles?or=(challenger.eq.${currentPlayerName},opponent.eq.${currentPlayerName})&status=eq.active&order=created_at.desc&limit=1`);
+    if (activeBattle && activeBattle.length > 0) {
+        const battle = activeBattle[0];
+        if (!currentPvpBattle || currentPvpBattle.id !== battle.id) {
             currentPvpBattle = battle;
             addSys(`⚔️ ПВП БОЙ: ${battle.challenger} vs ${battle.opponent} | Ставка: ${battle.challenger_bet + battle.opponent_bet}💰 | Ход: ${battle.turn}`);
-            // Синхронизируем HP игроков с их текущими HP в игре
             if (battle.challenger === currentPlayerName && battle.challenger_hp) player.hp = battle.challenger_hp;
             if (battle.opponent === currentPlayerName && battle.opponent_hp) player.hp = battle.opponent_hp;
             updateUI();
         }
-        if (!battle && currentPvpBattle) {
-            currentPvpBattle = null;
-            addSys(`🏁 ПВП бой завершён`);
-        }
+        return;
     }
+    
+    // Проверка входящих вызовов (pending)
+    const pendingCall = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
+    if (pendingCall && pendingCall.length > 0 && !currentPvpBattle) {
+        const call = pendingCall[0];
+        addSys(`📢 ВАС ВЫЗВАЛИ НА ПВП! ${call.challenger} вызвал вас на бой. Ставка: ${call.challenger_bet}💰`);
+        addSys(`✅ Чтобы принять: /пвп ставка СУММА (сумма должна быть не меньше ${call.challenger_bet})`);
+        addSys(`❌ Чтобы отклонить: /пвп отклонить`);
+    }
+    
+    // Если нет активного боя и нет вызова — очищаем currentPvpBattle
+    if (!activeBattle && !pendingCall && currentPvpBattle) {
+        currentPvpBattle = null;
+    }
+}
     
     async function pvpMakeAttack() {
         if (!currentPvpBattle) { addSys("❌ Нет активного ПВП боя"); return false; }
@@ -332,84 +348,36 @@
         return true;
     }
     
-    async function pvpCommand(cmd) {
-        const parts = cmd.split(" ");
-        const action = parts[1]?.toLowerCase();
-        
-        if (action === "вызвать" && parts[2] && parts[3]) {
-            const opponent = parts[2];
-            const bet = parseInt(parts[3]);
-            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
-            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
-            const existing = await supabaseQuery(`pvp_battles?challenger=eq.${currentPlayerName}&status=eq.pending`);
-            if (existing.length > 0) { addSys("❌ У тебя уже есть активный вызов"); return; }
-            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
-                method: 'POST',
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ challenger: currentPlayerName, opponent, challenger_bet: bet, status: 'pending', challenger_hp: player.hp, opponent_hp: 200 })
-            });
-            addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰`);
-            return;
-        }
-        
-        if (action === "ставка" && parts[2]) {
-            const bet = parseInt(parts[2]);
-            if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка > 0"); return; }
-            if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
-            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-            if (!battle.length) { addSys("❌ Нет активного вызова"); return; }
-            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, {
-                method: 'PATCH',
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ opponent_bet: bet, status: 'waiting_bet' })
-            });
-            addSys(`✅ Ставка ${bet}💰 принята. Введите /пвп подтвердить`);
-            return;
-        }
-        
-        if (action === "подтвердить") {
-            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.waiting_bet&limit=1`);
-            if (!battle.length) { addSys("❌ Нет вызова для подтверждения"); return; }
-            const totalBet = battle[0].challenger_bet + battle[0].opponent_bet;
-            if (player.gold < battle[0].opponent_bet) { addSys("❌ Не хватает голды для ставки"); return; }
-            // Списываем голду у обоих
-            const challenger = await supabaseLoadPlayer(battle[0].challenger);
-            if (challenger.gold < battle[0].challenger_bet) { addSys("❌ У соперника не хватает голды"); return; }
-            await fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${battle[0].challenger}`, {
-                method: 'PATCH',
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gold: challenger.gold - battle[0].challenger_bet })
-            });
-            player.gold -= battle[0].opponent_bet;
-            await supabaseSavePlayer();
-            await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, {
-                method: 'PATCH',
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'active', turn: battle[0].challenger })
-            });
-            addSys(`⚔️ БОЙ НАЧАЛСЯ! Первый ход: ${battle[0].challenger}`);
-            await pvpUpdate();
-            return;
-        }
-        
-        if (action === "отклонить") {
-            const battle = await supabaseQuery(`pvp_battles?opponent=eq.${currentPlayerName}&status=eq.pending&limit=1`);
-            if (battle.length) {
-                await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles?id=eq.${battle[0].id}`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-                addSys(`❌ Вызов отклонён`);
-            } else addSys("❌ Нет активного вызова");
-            return;
-        }
-        
-        if (action === "статус") {
-            const battle = await pvpCheckActiveBattle();
-            if (battle) addSys(`⚔️ ПВП бой: ${battle.challenger} vs ${battle.opponent} | Твой ход: ${battle.turn === currentPlayerName ? "✅" : "❌"}`);
-            else addSys("❌ Нет активного ПВП боя");
-            return;
-        }
-        
-        addSys("❌ /пвп вызвать Имя 1000 | /пвп ставка 1000 | /пвп подтвердить | /пвп отклонить | /пвп статус");
-    }
+   if (action === "вызвать" && parts[2] && parts[3]) {
+    const opponent = parts[2];
+    const bet = parseInt(parts[3]);
+    if (isNaN(bet) || bet <= 0) { addSys("❌ Ставка должна быть > 0"); return; }
+    if (player.gold < bet) { addSys("❌ Не хватает голды"); return; }
+    if (opponent === currentPlayerName) { addSys("❌ Нельзя вызвать самого себя"); return; }
+    
+    // Проверка, нет ли уже активного вызова от этого игрока
+    const existing = await supabaseQuery(`pvp_battles?challenger=eq.${currentPlayerName}&status=eq.pending`);
+    if (existing.length > 0) { addSys("❌ У тебя уже есть активный вызов"); return; }
+    
+    // Проверка, не занят ли оппонент боем
+    const opponentBusy = await supabaseQuery(`pvp_battles?or=(challenger.eq.${opponent},opponent.eq.${opponent})&status=eq.active`);
+    if (opponentBusy.length > 0) { addSys("❌ Соперник уже в ПВП бою"); return; }
+    
+    await fetch(`${SUPABASE_URL}/rest/v1/pvp_battles`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            challenger: currentPlayerName, 
+            opponent, 
+            challenger_bet: bet, 
+            status: 'pending',
+            challenger_hp: player.hp,
+            opponent_hp: player.maxHp
+        })
+    });
+    addSys(`📢 Вызов отправлен ${opponent} на ${bet}💰. Ждите ответа.`);
+    return;
+}
     
     // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function clearChat() {
